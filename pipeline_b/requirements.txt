@@ -1,0 +1,2 @@
+# Pipeline B uses only standard Python libraries (os, json, csv, math, argparse, pathlib, typing).
+# No external dependencies are required.
