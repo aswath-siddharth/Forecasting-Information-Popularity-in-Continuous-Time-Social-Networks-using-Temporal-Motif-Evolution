@@ -30,6 +30,7 @@ class PostData:
         "raw_comments",
         "flat_comments",
         "filtered_comments",
+        "leakage_safe",
         "c_24h",
         "u_24h",
         "r_organic",
@@ -57,6 +58,7 @@ class PostData:
         self.raw_comments = raw_comments
         self.flat_comments: List[CommentNode] = []
         self.filtered_comments: List[CommentNode] = []
+        self.leakage_safe = False
         
         # Computed features
         self.c_24h = 0
@@ -99,6 +101,22 @@ def validate_post_identity(post_user: str, post_time: float, post_id_mode: str):
         raise ValueError("Missing root post_user/author required by Pipeline B post_id contract")
     if not math.isfinite(post_time) or post_time <= 0:
         raise ValueError(f"Invalid post_time required by Pipeline B post_id contract: {post_time}")
+
+
+def apply_duplicate_post_id_policy(post: PostData, post_id_counts: Dict[str, int], policy: str) -> bool:
+    """Enforce unique output keys when raw data violates the base post_id contract."""
+    count = post_id_counts.get(post.post_id, 0)
+    post_id_counts[post.post_id] = count + 1
+
+    if count == 0:
+        return True
+    if policy == "error":
+        raise ValueError(f"Duplicate post_id found before suffixing: {post.post_id}")
+    if policy == "skip":
+        return False
+
+    post.post_id = f"{post.post_id}__dup{count}"
+    return True
 
 
 def flatten_comments(comments_list: List[Dict[str, Any]], post_id: str, post_user: str) -> List[CommentNode]:
@@ -146,6 +164,7 @@ def compute_cascade_metrics(post: PostData):
         dt = c.time - post.post_time
         if 0.0 <= dt <= 86400.0:
             post.filtered_comments.append(c)
+    post.leakage_safe = all(0.0 <= (c.time - post.post_time) <= 86400.0 for c in post.filtered_comments)
 
     # Subtask 2.1: Volume Aggregation (C_24h)
     # Filter out system accounts, deleted, removed, and AutoModerator
@@ -245,6 +264,7 @@ def validate_pipeline_output(posts: List[PostData]):
     
     # 1. Leakage Test: Verify zero comments > 86400 seconds are included in calculation
     for post in posts:
+        assert post.leakage_safe, f"Leakage detected for post {post.post_id}"
         for c in post.filtered_comments:
             dt = c.time - post.post_time
             assert 0.0 <= dt <= 86400.0, f"Leakage detected: Comment arrival delta {dt}s is outside [0, 86400] boundary!"
@@ -282,7 +302,13 @@ def validate_pipeline_output(posts: List[PostData]):
 # ENGINE EXECUTION PIPELINE
 # =====================================================================
 
-def process_file(json_path: Path, post_id_mode: str, global_post_counter: int) -> Tuple[List[PostData], int]:
+def process_file(
+    json_path: Path,
+    post_id_mode: str,
+    global_post_counter: int,
+    post_id_counts: Dict[str, int],
+    duplicate_post_id_policy: str,
+) -> Tuple[List[PostData], int, int]:
     """Ingests a single JSON thread file and yields posts with initial cascade metrics."""
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -292,6 +318,7 @@ def process_file(json_path: Path, post_id_mode: str, global_post_counter: int) -
         data = [data]
         
     posts = []
+    duplicates_handled = 0
     subreddit_name = json_path.stem  # Default subreddit name from filename stem
     
     for post_idx, post_dict in enumerate(data):
@@ -313,12 +340,18 @@ def process_file(json_path: Path, post_id_mode: str, global_post_counter: int) -
             post_id_mode=post_id_mode
         )
         global_post_counter += 1
+
+        if not apply_duplicate_post_id_policy(post_obj, post_id_counts, duplicate_post_id_policy):
+            duplicates_handled += 1
+            continue
+        if post_id_counts[post_obj.post_id.split("__dup", 1)[0]] > 1:
+            duplicates_handled += 1
         
         # Calculate intermediate cascade features
         compute_cascade_metrics(post_obj)
         posts.append(post_obj)
         
-    return posts, global_post_counter
+    return posts, global_post_counter, duplicates_handled
 
 def main():
     parser = argparse.ArgumentParser(description="Pipeline B: Target Label Generation Engine.")
@@ -327,6 +360,12 @@ def main():
     parser.add_argument("--post-id-mode", choices=["contract", "index"], default="contract",
                         help="Format of post_id: 'contract' (user_time) or 'index' (post_index to match Pipeline A).")
     parser.add_argument("--cutoff-floor", type=float, default=15.0, help="Minimum volume threshold fallback for virality.")
+    parser.add_argument(
+        "--duplicate-post-id-policy",
+        choices=["suffix", "skip", "error"],
+        default="suffix",
+        help="How to handle duplicate post_id values in raw data: suffix keeps all posts with __dupN, skip drops later duplicates, error stops.",
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -345,12 +384,26 @@ def main():
     
     all_posts: List[PostData] = []
     global_counter = 0
+    post_id_counts: Dict[str, int] = {}
+    duplicates_handled = 0
     
     for j_file in json_files:
-        posts, global_counter = process_file(j_file, args.post_id_mode, global_counter)
+        posts, global_counter, file_duplicates = process_file(
+            j_file,
+            args.post_id_mode,
+            global_counter,
+            post_id_counts,
+            args.duplicate_post_id_policy,
+        )
+        duplicates_handled += file_duplicates
         all_posts.extend(posts)
         
     print(f"Total posts ingested: {len(all_posts)}")
+    if duplicates_handled:
+        print(
+            f"Handled {duplicates_handled} duplicate post_id collision(s) "
+            f"with policy '{args.duplicate_post_id_policy}'."
+        )
     
     # Calculate subreddit percentiles and final targets
     calculate_percentile_cutoffs(all_posts, args.cutoff_floor)
