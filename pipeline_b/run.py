@@ -38,6 +38,8 @@ class PostData:
         # Computed features
         self.c_24h = 0
         self.u_24h = 0
+        self.r_organic = 0.0
+        self.m_user_max = 0.0
         self.v_max = 0
         self.dt_peak = 0
         self.a_initial = 0
@@ -51,35 +53,58 @@ class PostData:
 # INGESTION & TREE FLATTENING
 # =====================================================================
 
+SPECIAL_ACCOUNTS = {"[deleted]", "[removed]", "automoderator"}
+
+
+def first_present(mapping: Dict[str, Any], keys: List[str], default: Any = None) -> Any:
+    """Return the first non-empty value from a list of possible dataset field names."""
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def is_special_account(author: str) -> bool:
+    return author.strip().lower() in SPECIAL_ACCOUNTS
+
+
+def validate_post_identity(post_user: str, post_time: float, post_id_mode: str):
+    if post_id_mode != "contract":
+        return
+    if not post_user or post_user == "unknown":
+        raise ValueError("Missing root post_user/author required by Pipeline B post_id contract")
+    if not math.isfinite(post_time) or post_time <= 0:
+        raise ValueError(f"Invalid post_time required by Pipeline B post_id contract: {post_time}")
+
+
 def flatten_comments(comments_list: List[Dict[str, Any]], post_id: str, post_user: str) -> List[CommentNode]:
     """Flattens nested JSON comments tree using Depth-First Search (DFS)."""
     flat = []
-    comment_counter = 0
 
-    def traverse(node: Dict[str, Any], parent_id: str):
-        nonlocal comment_counter
-        author = node.get("user")
+    def traverse(node: Dict[str, Any], parent_id: str, path: str):
+        author = first_present(node, ["user", "author", "author_id"])
         if not author:
             return  # Skip invalid nodes lacking author info
         
-        time_val = float(node.get("time", 0.0))
-        body = node.get("body", "")
-        comment_id = f"{post_id}_c{comment_counter}"
-        comment_counter += 1
+        time_val = float(first_present(node, ["time", "comment_time", "created_utc", "created"], 0.0))
+        body = first_present(node, ["body", "body_text", "text"], "")
+        comment_id = str(first_present(node, ["comment_id", "id", "name"], f"{post_id}_{path}"))
+        node_parent_id = str(first_present(node, ["parent_id"], parent_id))
         
         flat.append(CommentNode(
-            author=author,
+            author=str(author),
             time=time_val,
-            body=body,
-            parent_id=parent_id,
+            body=str(body),
+            parent_id=node_parent_id,
             comment_id=comment_id
         ))
         
-        for reply in node.get("replies", []):
-            traverse(reply, comment_id)
+        for reply_idx, reply in enumerate(node.get("replies", [])):
+            traverse(reply, comment_id, f"{path}_{reply_idx}")
 
-    for comment in comments_list:
-        traverse(comment, post_user)
+    for comment_idx, comment in enumerate(comments_list):
+        traverse(comment, post_id, f"c{comment_idx}")
         
     return flat
 
@@ -101,12 +126,7 @@ def compute_cascade_metrics(post: PostData):
 
     # Subtask 2.1: Volume Aggregation (C_24h)
     # Filter out system accounts, deleted, removed, and AutoModerator
-    valid_comments = []
-    for c in post.filtered_comments:
-        author_lower = c.author.lower()
-        if author_lower in ["[deleted]", "[removed]", "automoderator"]:
-            continue
-        valid_comments.append(c)
+    valid_comments = [c for c in post.filtered_comments if not is_special_account(c.author)]
         
     # Deduplicate by comment_id
     seen_ids = set()
@@ -121,6 +141,12 @@ def compute_cascade_metrics(post: PostData):
     # Subtask 2.2: Unique Participant Expansion (U_24h)
     unique_authors = set(c.author for c in deduped_comments)
     post.u_24h = len(unique_authors)
+    post.r_organic = (post.u_24h / post.c_24h) if post.c_24h else 0.0
+
+    author_counts: Dict[str, int] = {}
+    for c in deduped_comments:
+        author_counts[c.author] = author_counts.get(c.author, 0) + 1
+    post.m_user_max = (max(author_counts.values()) / post.c_24h) if post.c_24h else 0.0
     
     # Subtask 2.3: Binned arrival velocity & acceleration
     bins = [0] * 24
@@ -186,6 +212,7 @@ def calculate_percentile_cutoffs(posts: List[PostData], cutoff_floor: float = 15
 def validate_pipeline_output(posts: List[PostData]):
     """Executes automated sanity checks as defined in Subtasks 4.3 & 5.3."""
     print("Running automated validation checks...")
+    assert posts, "No posts were ingested; Pipeline B cannot generate an empty label dataset"
     
     # 1. Leakage Test: Verify zero comments > 86400 seconds are included in calculation
     for post in posts:
@@ -208,6 +235,8 @@ def validate_pipeline_output(posts: List[PostData]):
         assert post.cutoff_s_final is not None, f"Missing p95_cutoff for post {post.post_id}"
         assert post.y_viral is not None, f"Missing y_viral for post {post.post_id}"
         assert post.y_reg is not None, f"Missing y_reg for post {post.post_id}"
+        assert 0.0 <= post.r_organic <= 1.0, f"Invalid organic participant ratio for post {post.post_id}"
+        assert 0.0 <= post.m_user_max <= 1.0, f"Invalid max user concentration for post {post.post_id}"
         
     # 4. Class Imbalance Ratio Validation
     ratio_pos = sum(p.y_viral for p in posts) / len(posts)
@@ -243,6 +272,7 @@ def process_file(json_path: Path, post_id_mode: str, global_post_counter: int) -
         post_user = post_dict.get("post_user", post_dict.get("author", "unknown"))
         post_time = float(post_dict.get("post_time", 0.0))
         comments = post_dict.get("comments", [])
+        validate_post_identity(post_user, post_time, post_id_mode)
         
         # Create PostData object
         post_obj = PostData(
@@ -336,9 +366,7 @@ def main():
             ])
             
     # Perform atomic replace
-    if output_path.exists():
-        output_path.unlink()
-    temp_output_path.rename(output_path)
+    os.replace(temp_output_path, output_path)
     
     print(f"Saved {len(all_posts)} post labels successfully to {output_path}!")
 
