@@ -11,6 +11,8 @@ from typing import List, Dict, Tuple, Any
 # =====================================================================
 
 class CommentNode:
+    __slots__ = ("author", "time", "body", "parent_id", "comment_id")
+
     def __init__(self, author: str, time: float, body: str, parent_id: str, comment_id: str):
         self.author = author
         self.time = time
@@ -19,6 +21,27 @@ class CommentNode:
         self.comment_id = comment_id
 
 class PostData:
+    __slots__ = (
+        "post_index",
+        "post_user",
+        "post_time",
+        "subreddit",
+        "post_id",
+        "raw_comments",
+        "flat_comments",
+        "filtered_comments",
+        "c_24h",
+        "u_24h",
+        "r_organic",
+        "m_user_max",
+        "v_max",
+        "dt_peak",
+        "a_initial",
+        "cutoff_s_final",
+        "y_viral",
+        "y_reg",
+    )
+
     def __init__(self, post_index: int, post_user: str, post_time: float, subreddit: str, raw_comments: List[Dict[str, Any]], post_id_mode: str):
         self.post_index = post_index
         self.post_user = post_user
@@ -167,6 +190,12 @@ def compute_cascade_metrics(post: PostData):
         
     # Initial acceleration: V(2) - V(1)
     post.a_initial = bins[1] - bins[0] if len(bins) > 1 else 0
+
+    # Keep only lightweight post-level metrics after this point. Subreddit percentile
+    # labeling needs all posts, but it does not need raw comment trees in memory.
+    post.raw_comments = []
+    post.flat_comments = []
+    post.filtered_comments = []
 
 # =====================================================================
 # SUBREDDIT PERCENTILE & LABEL ASSIGNMENT
