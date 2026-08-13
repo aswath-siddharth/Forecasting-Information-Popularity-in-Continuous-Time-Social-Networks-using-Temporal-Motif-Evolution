@@ -2,6 +2,7 @@
 temporal-reddit-reply/*.txt
 !temporal-reddit-reply/README.txt
 data/
+pipeline_b_labels_full.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
