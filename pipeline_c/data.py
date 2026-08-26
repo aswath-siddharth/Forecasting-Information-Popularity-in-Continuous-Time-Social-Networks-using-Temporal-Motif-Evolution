@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 
 
 @dataclass(frozen=True)
@@ -23,13 +24,16 @@ class JoinStats:
     files_processed: int = 1
 
 
-def _extract_contract_id(post_dict: dict, duplicate_counts: dict[str, int]) -> str:
+def extract_contract_id(post_dict: dict, duplicate_counts: dict[str, int]) -> str:
     """Derive the canonical Pipeline B contract post_id: {user}_{time}__dupN."""
     user = post_dict.get("post_user") or post_dict.get("author") or "unknown"
     raw_time = post_dict.get("post_time")
     if raw_time is None:
         raw_time = post_dict.get("created_utc", post_dict.get("created", 0.0))
-    time_int = int(float(raw_time))
+    try:
+        time_int = int(float(raw_time))
+    except (ValueError, TypeError):
+        time_int = 0
     base_id = f"{user}_{time_int}"
 
     count = duplicate_counts.get(base_id, 0)
@@ -39,8 +43,12 @@ def _extract_contract_id(post_dict: dict, duplicate_counts: dict[str, int]) -> s
     return base_id
 
 
-def _load_labels_map(labels_path: Path, target_column: str = "y_viral") -> dict[str, float]:
-    """Read target virality labels into a fast in-memory dictionary."""
+def load_labels_map(labels_path: str | Path, target_column: str = "y_viral") -> dict[str, float]:
+    """Read target virality labels into a fast in-memory dictionary (~70 MB for 1.2M labels)."""
+    labels_path = Path(labels_path)
+    if not labels_path.exists():
+        raise FileNotFoundError(f"Labels file not found: {labels_path}")
+
     labels_map: dict[str, float] = {}
     with open(labels_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -56,146 +64,179 @@ def _load_labels_map(labels_path: Path, target_column: str = "y_viral") -> dict[
     return labels_map
 
 
-def _load_directory_data(
-    features_dir: Path,
-    labels_path: Path,
-    data_dir: Path,
-    sequence_column: str = "X_seq_json",
-    target_column: str = "y_viral",
+def discover_file_pairs(
+    features_dir: str | Path,
+    data_dir: str | Path,
     category: str | None = None,
     max_files: int | None = None,
-    sample_ratio: float = 1.0,
-) -> tuple[pd.DataFrame, JoinStats]:
-    """Discover feature CSV files, align with raw JSON post IDs, and join labels."""
-    labels_map = _load_labels_map(labels_path, target_column=target_column)
-    all_feature_files = sorted(list(features_dir.rglob("*.csv")))
+    seed: int = 42,
+) -> tuple[list[tuple[Path, Path | None]], list[tuple[Path, Path | None]], list[tuple[Path, Path | None]]]:
+    """Discover feature CSVs and matching raw JSON files, splitting 80/10/10 into train/val/test."""
+    features_dir = Path(features_dir)
+    data_dir = Path(data_dir)
 
+    all_csvs = sorted(list(features_dir.rglob("*.csv")))
     if category:
         cat_lower = category.strip().lower()
-        all_feature_files = [
-            f for f in all_feature_files if cat_lower in f.parent.name.lower() or cat_lower in str(f).lower()
-        ]
+        all_csvs = [f for f in all_csvs if cat_lower in f.parent.name.lower() or cat_lower in str(f).lower()]
 
     if max_files is not None and max_files > 0:
-        all_feature_files = all_feature_files[:max_files]
+        all_csvs = all_csvs[:max_files]
 
-    if not all_feature_files:
+    if not all_csvs:
         raise FileNotFoundError(
             f"No feature CSV files found in {features_dir}"
             + (f" matching category '{category}'" if category else "")
         )
 
-    print(f"Aligning and loading features from {len(all_feature_files)} CSV files...")
-
-    collected_dfs: list[pd.DataFrame] = []
-    total_feature_rows = 0
-    total_joined_rows = 0
-    total_dropped_feature_rows = 0
-    processed_count = 0
-
-    for feat_file in all_feature_files:
-        try:
-            feat_df = pd.read_csv(feat_file)
-        except Exception:
-            continue
-
-        if feat_df.empty or "post_id" not in feat_df.columns or sequence_column not in feat_df.columns:
-            continue
-
-        total_feature_rows += len(feat_df)
+    file_pairs: list[tuple[Path, Path | None]] = []
+    for feat_file in all_csvs:
         sub_name = feat_file.stem[:-9] if feat_file.stem.endswith("_features") else feat_file.stem
-
-        # Locate corresponding raw JSON file in data_dir
         rel_dir = feat_file.parent.name
         json_file = data_dir / rel_dir / f"{sub_name}.json"
         if not json_file.exists():
             candidates = list(data_dir.rglob(f"{sub_name}.json"))
             json_file = candidates[0] if candidates else None
+        file_pairs.append((feat_file, json_file))
 
-        post_index_to_label: dict[str, float] = {}
-        if json_file and json_file.exists():
+    # Shuffle with seed and split 80 / 10 / 10
+    rng = random.Random(seed)
+    shuffled_pairs = list(file_pairs)
+    rng.shuffle(shuffled_pairs)
+
+    n_total = len(shuffled_pairs)
+    n_train = max(1, int(0.8 * n_total))
+    n_val = max(1, int(0.1 * n_total)) if n_total >= 3 else 0
+
+    train_pairs = shuffled_pairs[:n_train]
+    val_pairs = shuffled_pairs[n_train : n_train + n_val] if n_val > 0 else shuffled_pairs[:n_train]
+    test_pairs = shuffled_pairs[n_train + n_val :] if (n_total - n_train - n_val) > 0 else shuffled_pairs[:n_train]
+
+    return train_pairs, val_pairs, test_pairs
+
+
+def parse_sequence(value: str | Iterable[Iterable[float]], feature_dim: int) -> np.ndarray:
+    """Deserialize one JSON sequence and validate it as [K, feature_dim]."""
+    parsed = json.loads(value) if isinstance(value, str) else value
+    array = np.asarray(parsed, dtype=np.float32)
+
+    if array.ndim != 2:
+        raise ValueError(f"Expected a 2D sequence matrix, got shape {array.shape}")
+    if array.shape[0] == 0:
+        raise ValueError("Encountered an empty sequence matrix.")
+    if array.shape[1] != feature_dim:
+        raise ValueError(f"Expected feature_dim={feature_dim}, got shape {array.shape}")
+
+    return array
+
+
+class StreamingCascadeDataset(IterableDataset):
+    """Memory-efficient streaming dataset that loads files on-the-fly, keeping RAM under 1 GB."""
+
+    def __init__(
+        self,
+        file_pairs: list[tuple[Path, Path | None]],
+        labels_map: dict[str, float],
+        sequence_column: str = "X_seq_json",
+        target_column: str = "y_viral",
+        feature_dim: int = 20,
+        shuffle_files: bool = True,
+        sample_ratio: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self.file_pairs = file_pairs
+        self.labels_map = labels_map
+        self.sequence_column = sequence_column
+        self.target_column = target_column
+        self.feature_dim = feature_dim
+        self.shuffle_files = shuffle_files
+        self.sample_ratio = sample_ratio
+
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            pairs = list(self.file_pairs)
+        else:
+            pairs = [
+                f for idx, f in enumerate(self.file_pairs) if idx % worker_info.num_workers == worker_info.id
+            ]
+
+        if self.shuffle_files:
+            random.shuffle(pairs)
+
+        for feat_file, json_file in pairs:
+            # Map post_k to labels using json metadata
+            post_labels: dict[str, float] = {}
+            if json_file and json_file.exists():
+                try:
+                    with open(json_file, "r", encoding="utf-8") as jf:
+                        raw_posts = json.load(jf)
+                        if not isinstance(raw_posts, list):
+                            raw_posts = [raw_posts]
+                        dup_tracker: dict[str, int] = {}
+                        for idx, post_obj in enumerate(raw_posts):
+                            contract_id = extract_contract_id(post_obj, dup_tracker)
+                            if contract_id in self.labels_map:
+                                post_labels[f"post_{idx}"] = self.labels_map[contract_id]
+                                post_labels[contract_id] = self.labels_map[contract_id]
+                except Exception:
+                    pass
+
             try:
-                with open(json_file, "r", encoding="utf-8") as jf:
-                    raw_posts = json.load(jf)
-                    if not isinstance(raw_posts, list):
-                        raw_posts = [raw_posts]
-                    dup_tracker: dict[str, int] = {}
-                    for idx, post_obj in enumerate(raw_posts):
-                        contract_id = _extract_contract_id(post_obj, dup_tracker)
-                        if contract_id in labels_map:
-                            post_index_to_label[f"post_{idx}"] = labels_map[contract_id]
-                            post_index_to_label[contract_id] = labels_map[contract_id]
+                with open(feat_file, "r", encoding="utf-8") as ff:
+                    reader = csv.DictReader(ff)
+                    for row in reader:
+                        pid = row.get("post_id")
+                        label = post_labels.get(pid, self.labels_map.get(pid))
+                        if label is None:
+                            continue
+
+                        if 0.0 < self.sample_ratio < 1.0 and random.random() > self.sample_ratio:
+                            continue
+
+                        seq_str = row.get(self.sequence_column)
+                        if not seq_str:
+                            continue
+
+                        seq_array = parse_sequence(seq_str, self.feature_dim)
+                        yield torch.from_numpy(seq_array), torch.tensor([float(label)], dtype=torch.float32)
             except Exception:
-                pass
-
-        feat_df[target_column] = feat_df["post_id"].map(
-            lambda pid: post_index_to_label.get(pid, labels_map.get(pid, np.nan))
-        )
-
-        matched_df = feat_df.dropna(subset=[target_column]).copy()
-        dropped = len(feat_df) - len(matched_df)
-        total_dropped_feature_rows += dropped
-        total_joined_rows += len(matched_df)
-
-        if not matched_df.empty:
-            if 0.0 < sample_ratio < 1.0:
-                matched_df = matched_df.sample(frac=sample_ratio, random_state=42)
-            collected_dfs.append(matched_df[["post_id", sequence_column, target_column]])
-            processed_count += 1
-
-    if not collected_dfs:
-        raise ValueError(
-            "Inner join produced zero rows across all feature files. Check post_id overlap."
-        )
-
-    merged = pd.concat(collected_dfs, ignore_index=True)
-    stats = JoinStats(
-        feature_rows=total_feature_rows,
-        label_rows=len(labels_map),
-        joined_rows=total_joined_rows,
-        dropped_feature_rows=total_dropped_feature_rows,
-        dropped_label_rows=max(0, len(labels_map) - merged["post_id"].nunique()),
-        files_processed=processed_count,
-    )
-
-    return merged.reset_index(drop=True), stats
+                continue
 
 
-def load_and_join_data(
-    features_path: str | Path,
-    labels_path: str | Path,
-    data_dir: str | Path = "data",
+class CascadeDataset(Dataset):
+    """In-memory PyTorch dataset for variable-length cascade feature sequences (single file mode)."""
+
+    def __init__(
+        self,
+        dataframe: pd.DataFrame,
+        sequence_column: str = "X_seq_json",
+        target_column: str = "y_viral",
+        feature_dim: int = 20,
+    ) -> None:
+        self.dataframe = dataframe.reset_index(drop=True)
+        self.sequence_column = sequence_column
+        self.target_column = target_column
+        self.feature_dim = feature_dim
+
+    def __len__(self) -> int:
+        return len(self.dataframe)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        row = self.dataframe.iloc[idx]
+        sequence = parse_sequence(row[self.sequence_column], self.feature_dim)
+        label = np.float32(row[self.target_column])
+        return torch.from_numpy(sequence), torch.tensor([label], dtype=torch.float32)
+
+
+def load_single_file_data(
+    features_path: Path,
+    labels_path: Path,
     sequence_column: str = "X_seq_json",
     target_column: str = "y_viral",
-    category: str | None = None,
-    max_files: int | None = None,
     sample_ratio: float = 1.0,
 ) -> tuple[pd.DataFrame, JoinStats]:
-    """Load Pipeline A features and Pipeline B labels, supporting both single CSV and directory input."""
-    features_path = Path(features_path)
-    labels_path = Path(labels_path)
-    data_dir = Path(data_dir)
-
-    if not features_path.exists():
-        raise FileNotFoundError(f"Feature path not found: {features_path}")
-    if not labels_path.exists():
-        raise FileNotFoundError(
-            f"Label file not found: {labels_path}. Add pipeline_b_labels.csv or pass --labels."
-        )
-
-    if features_path.is_dir():
-        return _load_directory_data(
-            features_dir=features_path,
-            labels_path=labels_path,
-            data_dir=data_dir,
-            sequence_column=sequence_column,
-            target_column=target_column,
-            category=category,
-            max_files=max_files,
-            sample_ratio=sample_ratio,
-        )
-
-    # Single-file mode
+    """Load single CSV files for features and labels."""
     features_df = pd.read_csv(features_path)
     labels_df = pd.read_csv(labels_path)
 
@@ -229,50 +270,13 @@ def load_and_join_data(
     return merged.reset_index(drop=True), stats
 
 
-def parse_sequence(value: str | Iterable[Iterable[float]], feature_dim: int) -> np.ndarray:
-    """Deserialize one JSON sequence and validate it as [K, feature_dim]."""
-    parsed = json.loads(value) if isinstance(value, str) else value
-    array = np.asarray(parsed, dtype=np.float32)
-
-    if array.ndim != 2:
-        raise ValueError(f"Expected a 2D sequence matrix, got shape {array.shape}")
-    if array.shape[0] == 0:
-        raise ValueError("Encountered an empty sequence matrix.")
-    if array.shape[1] != feature_dim:
-        raise ValueError(f"Expected feature_dim={feature_dim}, got shape {array.shape}")
-
-    return array
-
-
-class CascadeDataset(Dataset):
-    """PyTorch dataset for variable-length cascade feature sequences."""
-
-    def __init__(
-        self,
-        dataframe: pd.DataFrame,
-        sequence_column: str = "X_seq_json",
-        target_column: str = "y_viral",
-        feature_dim: int = 20,
-    ) -> None:
-        self.dataframe = dataframe.reset_index(drop=True)
-        self.sequence_column = sequence_column
-        self.target_column = target_column
-        self.feature_dim = feature_dim
-
-    def __len__(self) -> int:
-        return len(self.dataframe)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        row = self.dataframe.iloc[idx]
-        sequence = parse_sequence(row[self.sequence_column], self.feature_dim)
-        label = np.float32(row[self.target_column])
-        return torch.from_numpy(sequence), torch.tensor([label], dtype=torch.float32)
-
-
 def pad_collate_fn(
     batch: list[tuple[torch.Tensor, torch.Tensor]],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Pad variable-length sequences and create True-for-padding boolean masks."""
+    if not batch:
+        return torch.empty(0), torch.empty(0, dtype=torch.bool), torch.empty(0)
+
     sequences, labels = zip(*batch)
     lengths = torch.tensor([sequence.shape[0] for sequence in sequences], dtype=torch.long)
     padded = pad_sequence(sequences, batch_first=True, padding_value=0.0)

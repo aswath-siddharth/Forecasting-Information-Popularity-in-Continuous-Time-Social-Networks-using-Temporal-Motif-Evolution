@@ -19,7 +19,14 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
-from .data import CascadeDataset, load_and_join_data, pad_collate_fn
+from .data import (
+    CascadeDataset,
+    StreamingCascadeDataset,
+    discover_file_pairs,
+    load_labels_map,
+    load_single_file_data,
+    pad_collate_fn,
+)
 from .model import CascadeAttentionGRU, PoolingBaseline
 
 
@@ -65,14 +72,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-layers", type=int, default=1)
     parser.add_argument("--attention-dim", type=int, default=64)
     parser.add_argument("--dropout", type=float, default=0.3)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=None)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4)
     return parser.parse_args()
 
 
@@ -106,10 +113,11 @@ def make_splits(df: pd.DataFrame, target_column: str, seed: int) -> tuple[pd.Dat
     return train_df.reset_index(drop=True), val_df.reset_index(drop=True), test_df.reset_index(drop=True)
 
 
-def make_loader(
+def make_single_file_loader(
     df: pd.DataFrame,
     args: argparse.Namespace,
     shuffle: bool,
+    is_cuda: bool,
 ) -> DataLoader:
     dataset = CascadeDataset(
         df,
@@ -117,7 +125,6 @@ def make_loader(
         target_column=args.target_column,
         feature_dim=args.feature_dim,
     )
-    is_cuda = torch.cuda.is_available() and (args.device is None or "cuda" in str(args.device))
     return DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -138,9 +145,15 @@ def run_epoch(
     is_training = optimizer is not None
     model.train(is_training)
     total_loss = 0.0
-    total_examples = 0
+    total_batches = 0
 
-    for x, padding_mask, labels in loader:
+    for batch in loader:
+        if batch is None:
+            continue
+        x, padding_mask, labels = batch
+        if x.nelement() == 0 or labels.nelement() == 0:
+            continue
+
         x = x.to(device)
         padding_mask = padding_mask.to(device)
         labels = labels.to(device)
@@ -155,11 +168,10 @@ def run_epoch(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
-        batch_size = labels.shape[0]
-        total_loss += loss.item() * batch_size
-        total_examples += batch_size
+        total_loss += loss.item()
+        total_batches += 1
 
-    return total_loss / max(total_examples, 1)
+    return total_loss / max(total_batches, 1)
 
 
 def evaluate_model(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> dict[str, float]:
@@ -168,7 +180,12 @@ def evaluate_model(model: torch.nn.Module, loader: DataLoader, device: torch.dev
     labels: list[int] = []
 
     with torch.no_grad():
-        for x, padding_mask, y in loader:
+        for batch in loader:
+            if batch is None:
+                continue
+            x, padding_mask, y = batch
+            if x.nelement() == 0:
+                continue
             logits = model(x.to(device), padding_mask.to(device))
             probabilities.extend(torch.sigmoid(logits).cpu().numpy().reshape(-1).tolist())
             labels.extend(y.numpy().reshape(-1).astype(int).tolist())
@@ -177,13 +194,14 @@ def evaluate_model(model: torch.nn.Module, loader: DataLoader, device: torch.dev
     y_prob = np.asarray(probabilities)
     y_pred = (y_prob >= 0.5).astype(int)
 
-    has_both_classes = len(np.unique(y_true)) == 2
+    has_both_classes = len(np.unique(y_true)) == 2 if len(y_true) > 0 else False
     return {
         "roc_auc": float(roc_auc_score(y_true, y_prob)) if has_both_classes else float("nan"),
         "pr_auc": float(average_precision_score(y_true, y_prob)) if has_both_classes else float("nan"),
-        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
-        "precision": float(precision_score(y_true, y_pred, zero_division=0)),
-        "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "f1": float(f1_score(y_true, y_pred, zero_division=0)) if len(y_true) > 0 else float("nan"),
+        "precision": float(precision_score(y_true, y_pred, zero_division=0)) if len(y_true) > 0 else float("nan"),
+        "recall": float(recall_score(y_true, y_pred, zero_division=0)) if len(y_true) > 0 else float("nan"),
+        "total_test_samples": int(len(y_true)),
     }
 
 
@@ -223,13 +241,14 @@ def train_one_model(
     history: list[dict[str, float | int | str]] = []
     checkpoint_path = output_dir / f"best_{name}_model.pt"
 
+    print(f"\n--- Training {name} ---")
     for epoch in range(1, args.epochs + 1):
         train_loss = run_epoch(model, train_loader, criterion, device, optimizer)
         val_loss = run_epoch(model, val_loader, criterion, device)
         scheduler.step(val_loss)
         history.append({"model": name, "epoch": epoch, "train_loss": train_loss, "val_loss": val_loss})
 
-        print(f"{name} epoch {epoch:03d}: train_loss={train_loss:.4f} val_loss={val_loss:.4f}")
+        print(f"[{name}] epoch {epoch:03d}/{args.epochs:03d} -> train_loss={train_loss:.4f} val_loss={val_loss:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -238,7 +257,7 @@ def train_one_model(
         else:
             stale_epochs += 1
             if stale_epochs >= args.patience:
-                print(f"{name}: early stopping after {epoch} epochs")
+                print(f"[{name}] early stopping triggered after {epoch} epochs")
                 break
 
     model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
@@ -271,42 +290,116 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    features_path = Path(args.features)
+    labels_path = Path(args.labels)
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    merged_df, join_stats = load_and_join_data(
-        args.features,
-        args.labels,
-        data_dir=args.data_dir,
-        sequence_column=args.sequence_column,
-        target_column=args.target_column,
-        category=args.category,
-        max_files=args.max_files,
-        sample_ratio=args.sample_ratio,
-    )
+    is_cuda = (device.type == "cuda")
 
-    train_df, val_df, test_df = make_splits(merged_df, args.target_column, args.seed)
-    train_loader = make_loader(train_df, args, shuffle=True)
-    val_loader = make_loader(val_df, args, shuffle=False)
-    test_loader = make_loader(test_df, args, shuffle=False)
+    if features_path.is_dir():
+        print(f"Discovered features directory: {features_path}")
+        train_pairs, val_pairs, test_pairs = discover_file_pairs(
+            features_dir=features_path,
+            data_dir=args.data_dir,
+            category=args.category,
+            max_files=args.max_files,
+            seed=args.seed,
+        )
+        total_files = len(train_pairs) + len(val_pairs) + len(test_pairs)
+        print(f"Total subreddit files: {total_files} (Train: {len(train_pairs)}, Val: {len(val_pairs)}, Test: {len(test_pairs)})")
 
-    positives = float(train_df[args.target_column].sum())
-    negatives = float(len(train_df) - positives)
-    if positives == 0:
-        pos_weight = torch.tensor([1.0], dtype=torch.float32)
+        labels_map = load_labels_map(labels_path, target_column=args.target_column)
+        positives = sum(labels_map.values())
+        negatives = len(labels_map) - positives
+        pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32)
+
+        train_dataset = StreamingCascadeDataset(
+            train_pairs,
+            labels_map,
+            sequence_column=args.sequence_column,
+            target_column=args.target_column,
+            feature_dim=args.feature_dim,
+            shuffle_files=True,
+            sample_ratio=args.sample_ratio,
+        )
+        val_dataset = StreamingCascadeDataset(
+            val_pairs,
+            labels_map,
+            sequence_column=args.sequence_column,
+            target_column=args.target_column,
+            feature_dim=args.feature_dim,
+            shuffle_files=False,
+            sample_ratio=args.sample_ratio,
+        )
+        test_dataset = StreamingCascadeDataset(
+            test_pairs,
+            labels_map,
+            sequence_column=args.sequence_column,
+            target_column=args.target_column,
+            feature_dim=args.feature_dim,
+            shuffle_files=False,
+            sample_ratio=args.sample_ratio,
+        )
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            collate_fn=pad_collate_fn,
+            pin_memory=is_cuda,
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            collate_fn=pad_collate_fn,
+            pin_memory=is_cuda,
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            collate_fn=pad_collate_fn,
+            pin_memory=is_cuda,
+        )
+
+        dataset_meta = {
+            "mode": "streaming_directory",
+            "total_files": total_files,
+            "train_files": len(train_pairs),
+            "val_files": len(val_pairs),
+            "test_files": len(test_pairs),
+            "labels_count": len(labels_map),
+        }
     else:
-        pos_weight = torch.tensor([negatives / positives], dtype=torch.float32)
+        # Single-file mode
+        print(f"Loading single features file: {features_path}")
+        merged_df, join_stats = load_single_file_data(
+            features_path,
+            labels_path,
+            sequence_column=args.sequence_column,
+            target_column=args.target_column,
+            sample_ratio=args.sample_ratio,
+        )
+        train_df, val_df, test_df = make_splits(merged_df, args.target_column, args.seed)
+        train_loader = make_single_file_loader(train_df, args, shuffle=True, is_cuda=is_cuda)
+        val_loader = make_single_file_loader(val_df, args, shuffle=False, is_cuda=is_cuda)
+        test_loader = make_single_file_loader(test_df, args, shuffle=False, is_cuda=is_cuda)
 
-    print(
-        "join stats:",
-        {
-            "files_processed": join_stats.files_processed,
+        positives = float(train_df[args.target_column].sum())
+        negatives = float(len(train_df) - positives)
+        pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32)
+
+        dataset_meta = {
+            "mode": "single_file",
             "feature_rows": join_stats.feature_rows,
-            "label_rows": join_stats.label_rows,
             "joined_rows": join_stats.joined_rows,
-            "dropped_feature_rows": join_stats.dropped_feature_rows,
-            "dropped_label_rows": join_stats.dropped_label_rows,
-        },
-    )
-    print(f"device={device} train={len(train_df)} val={len(val_df)} test={len(test_df)} pos_weight={pos_weight.item():.4f}")
+            "train_rows": len(train_df),
+            "val_rows": len(val_df),
+            "test_rows": len(test_df),
+        }
+
+    print(f"device={device} | pos_weight={pos_weight.item():.4f} | streaming_workers={args.num_workers}")
+    print(f"dataset info: {dataset_meta}")
 
     all_metrics: dict[str, dict[str, float]] = {}
     all_history: list[dict[str, float | int | str]] = []
@@ -329,8 +422,7 @@ def main() -> None:
     save_loss_curves(history_df, output_dir)
 
     report = {
-        "join_stats": join_stats.__dict__,
-        "splits": {"train": len(train_df), "validation": len(val_df), "test": len(test_df)},
+        "dataset_meta": dataset_meta,
         "metrics": all_metrics,
     }
     metadata = {
@@ -349,6 +441,7 @@ def main() -> None:
     (output_dir / "evaluation_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
+    print("\n--- Final Evaluation Report ---")
     print(json.dumps(report, indent=2))
 
 
