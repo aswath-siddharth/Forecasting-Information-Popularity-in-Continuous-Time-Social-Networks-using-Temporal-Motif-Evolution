@@ -25,8 +25,38 @@ from .model import CascadeAttentionGRU, PoolingBaseline
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train Pipeline C cascade virality models.")
-    parser.add_argument("--features", default="pipeline_a_features.csv")
-    parser.add_argument("--labels", default="pipeline_b_labels.csv")
+    parser.add_argument(
+        "--features",
+        default="pipeline_a_features.csv",
+        help="Path to feature CSV file (e.g. pipeline_a_features.csv) or directory containing feature CSVs (e.g. output_features).",
+    )
+    parser.add_argument(
+        "--labels",
+        default="pipeline_b_labels.csv",
+        help="Path to target labels CSV file (e.g. pipeline_b_labels.csv or pipeline_b_labels_full.csv).",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default="data",
+        help="Path to raw JSON dataset directory (used for ID contract resolution when loading directory features).",
+    )
+    parser.add_argument(
+        "--category",
+        default=None,
+        help="Optional category filter (e.g. 'Sports', 'Technology', 'Animals and Pets', 'Gaming', etc.).",
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        help="Optional limit on number of subreddit feature files to process.",
+    )
+    parser.add_argument(
+        "--sample-ratio",
+        type=float,
+        default=1.0,
+        help="Optional subsample fraction (0.0 to 1.0) of records to train on.",
+    )
     parser.add_argument("--output-dir", default="pipeline_c/outputs")
     parser.add_argument("--sequence-column", default="X_seq_json")
     parser.add_argument("--target-column", default="y_viral")
@@ -35,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-layers", type=int, default=1)
     parser.add_argument("--attention-dim", type=int, default=64)
     parser.add_argument("--dropout", type=float, default=0.3)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -51,20 +81,27 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
 
 
 def make_splits(df: pd.DataFrame, target_column: str, seed: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    has_multiple_classes = df[target_column].nunique() > 1
+    stratify_col = df[target_column] if has_multiple_classes else None
+
     train_df, temp_df = train_test_split(
         df,
         test_size=0.2,
         random_state=seed,
-        stratify=df[target_column],
+        stratify=stratify_col,
     )
+
+    temp_stratify = temp_df[target_column] if (has_multiple_classes and temp_df[target_column].nunique() > 1) else None
     val_df, test_df = train_test_split(
         temp_df,
         test_size=0.5,
         random_state=seed,
-        stratify=temp_df[target_column],
+        stratify=temp_stratify,
     )
     return train_df.reset_index(drop=True), val_df.reset_index(drop=True), test_df.reset_index(drop=True)
 
@@ -80,12 +117,14 @@ def make_loader(
         target_column=args.target_column,
         feature_dim=args.feature_dim,
     )
+    is_cuda = torch.cuda.is_available() and (args.device is None or "cuda" in str(args.device))
     return DataLoader(
         dataset,
         batch_size=args.batch_size,
         shuffle=shuffle,
         num_workers=args.num_workers,
         collate_fn=pad_collate_fn,
+        pin_memory=is_cuda,
     )
 
 
@@ -202,7 +241,7 @@ def train_one_model(
                 print(f"{name}: early stopping after {epoch} epochs")
                 break
 
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
     metrics = evaluate_model(model, test_loader, device)
     metrics["best_val_loss"] = float(best_val_loss)
 
@@ -236,8 +275,12 @@ def main() -> None:
     merged_df, join_stats = load_and_join_data(
         args.features,
         args.labels,
+        data_dir=args.data_dir,
         sequence_column=args.sequence_column,
         target_column=args.target_column,
+        category=args.category,
+        max_files=args.max_files,
+        sample_ratio=args.sample_ratio,
     )
 
     train_df, val_df, test_df = make_splits(merged_df, args.target_column, args.seed)
@@ -248,12 +291,14 @@ def main() -> None:
     positives = float(train_df[args.target_column].sum())
     negatives = float(len(train_df) - positives)
     if positives == 0:
-        raise ValueError("Training split contains zero positive labels; cannot compute pos_weight.")
-    pos_weight = torch.tensor([negatives / positives], dtype=torch.float32)
+        pos_weight = torch.tensor([1.0], dtype=torch.float32)
+    else:
+        pos_weight = torch.tensor([negatives / positives], dtype=torch.float32)
 
     print(
         "join stats:",
         {
+            "files_processed": join_stats.files_processed,
             "feature_rows": join_stats.feature_rows,
             "label_rows": join_stats.label_rows,
             "joined_rows": join_stats.joined_rows,
@@ -309,4 +354,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
