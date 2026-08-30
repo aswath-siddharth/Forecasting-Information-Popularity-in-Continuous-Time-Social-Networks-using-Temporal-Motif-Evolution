@@ -130,6 +130,57 @@ def parse_sequence(value: str | Iterable[Iterable[float]], feature_dim: int) -> 
     return array
 
 
+UNBOUNDED_COLS = (5, 6, 7, 8, 14, 15, 16, 17, 18, 19)
+
+
+class SequenceScaler:
+    """Scales unbounded features in 20-D sequence matrices X_seq [K, 20].
+    Applies log1p transform followed by StandardScaler on unbounded columns:
+        Cols 5-8: CSR Structural Centrality metrics
+        Cols 14-15: Idle Time & Reactivated Descendants
+        Col 16: Motif Velocity delta_t_M
+        Cols 17-18: Window index & cumulative prior comments
+        Col 19: Inter-arrival gap delta_t_edge
+    Bounded features (One-hot motifs 0-4, VADER sentiment 9-12, I_reactivate 13) are left unchanged.
+    """
+
+    def __init__(self, unbounded_cols: tuple[int, ...] = UNBOUNDED_COLS) -> None:
+        self.unbounded_cols = list(unbounded_cols)
+        self.mean: np.ndarray | None = None
+        self.scale: np.ndarray | None = None
+
+    def fit(self, sequences: Iterable[np.ndarray]) -> SequenceScaler:
+        count = 0
+        sum_x = np.zeros(len(self.unbounded_cols), dtype=np.float64)
+        sum_sq = np.zeros(len(self.unbounded_cols), dtype=np.float64)
+
+        for seq in sequences:
+            if seq.size == 0:
+                continue
+            unbounded_vals = np.log1p(np.maximum(0.0, seq[:, self.unbounded_cols]))
+            count += unbounded_vals.shape[0]
+            sum_x += unbounded_vals.sum(axis=0)
+            sum_sq += (unbounded_vals ** 2).sum(axis=0)
+
+        if count > 0:
+            self.mean = (sum_x / count).astype(np.float32)
+            var = (sum_sq / count) - (self.mean ** 2)
+            var = np.maximum(var, 1e-7)
+            self.scale = np.sqrt(var).astype(np.float32)
+        else:
+            self.mean = np.zeros(len(self.unbounded_cols), dtype=np.float32)
+            self.scale = np.ones(len(self.unbounded_cols), dtype=np.float32)
+        return self
+
+    def transform(self, seq: np.ndarray) -> np.ndarray:
+        if self.mean is None or self.scale is None or seq.size == 0:
+            return seq
+        seq_copy = seq.copy()
+        unbounded_vals = np.log1p(np.maximum(0.0, seq_copy[:, self.unbounded_cols]))
+        seq_copy[:, self.unbounded_cols] = (unbounded_vals - self.mean) / self.scale
+        return seq_copy
+
+
 class StreamingCascadeDataset(IterableDataset):
     """Memory-efficient streaming dataset that loads files on-the-fly, keeping RAM under 1 GB."""
 
@@ -142,6 +193,7 @@ class StreamingCascadeDataset(IterableDataset):
         feature_dim: int = 20,
         shuffle_files: bool = True,
         sample_ratio: float = 1.0,
+        scaler: SequenceScaler | None = None,
     ) -> None:
         super().__init__()
         self.file_pairs = file_pairs
@@ -151,6 +203,7 @@ class StreamingCascadeDataset(IterableDataset):
         self.feature_dim = feature_dim
         self.shuffle_files = shuffle_files
         self.sample_ratio = sample_ratio
+        self.scaler = scaler
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
@@ -199,6 +252,8 @@ class StreamingCascadeDataset(IterableDataset):
                             continue
 
                         seq_array = parse_sequence(seq_str, self.feature_dim)
+                        if self.scaler is not None:
+                            seq_array = self.scaler.transform(seq_array)
                         yield torch.from_numpy(seq_array), torch.tensor([float(label)], dtype=torch.float32)
             except Exception:
                 continue
@@ -213,11 +268,13 @@ class CascadeDataset(Dataset):
         sequence_column: str = "X_seq_json",
         target_column: str = "y_viral",
         feature_dim: int = 20,
+        scaler: SequenceScaler | None = None,
     ) -> None:
         self.dataframe = dataframe.reset_index(drop=True)
         self.sequence_column = sequence_column
         self.target_column = target_column
         self.feature_dim = feature_dim
+        self.scaler = scaler
 
     def __len__(self) -> int:
         return len(self.dataframe)
@@ -225,6 +282,8 @@ class CascadeDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         row = self.dataframe.iloc[idx]
         sequence = parse_sequence(row[self.sequence_column], self.feature_dim)
+        if self.scaler is not None:
+            sequence = self.scaler.transform(sequence)
         label = np.float32(row[self.target_column])
         return torch.from_numpy(sequence), torch.tensor([label], dtype=torch.float32)
 

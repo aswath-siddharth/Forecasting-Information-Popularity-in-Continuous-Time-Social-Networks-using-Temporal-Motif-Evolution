@@ -22,11 +22,13 @@ from torch.utils.data import DataLoader
 
 from .data import (
     CascadeDataset,
+    SequenceScaler,
     StreamingCascadeDataset,
     discover_file_pairs,
     load_labels_map,
     load_single_file_data,
     pad_collate_fn,
+    parse_sequence,
 )
 from .model import CascadeAttentionGRU, PoolingBaseline
 
@@ -195,12 +197,14 @@ def make_single_file_loader(
     args: argparse.Namespace,
     shuffle: bool,
     is_cuda: bool,
+    scaler: SequenceScaler | None = None,
 ) -> DataLoader:
     dataset = CascadeDataset(
         df,
         sequence_column=args.sequence_column,
         target_column=args.target_column,
         feature_dim=args.feature_dim,
+        scaler=scaler,
     )
     return DataLoader(
         dataset,
@@ -412,6 +416,26 @@ def main() -> None:
         negatives = len(labels_map) - positives
         pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32)
 
+        # Fit SequenceScaler on sample of training sequences to prevent data leakage
+        def _get_train_seqs():
+            count = 0
+            for feat_file, _ in train_pairs[:20]:
+                try:
+                    with open(feat_file, "r", encoding="utf-8") as ff:
+                        reader = csv.DictReader(ff)
+                        for row in reader:
+                            seq_str = row.get(args.sequence_column)
+                            if seq_str:
+                                yield parse_sequence(seq_str, args.feature_dim)
+                                count += 1
+                                if count >= 2000:
+                                    return
+                except Exception:
+                    continue
+
+        scaler = SequenceScaler().fit(_get_train_seqs())
+        print(f"Fitted SequenceScaler on training split (mean={scaler.mean}, scale={scaler.scale})")
+
         train_dataset = StreamingCascadeDataset(
             train_pairs,
             labels_map,
@@ -420,6 +444,7 @@ def main() -> None:
             feature_dim=args.feature_dim,
             shuffle_files=True,
             sample_ratio=args.sample_ratio,
+            scaler=scaler,
         )
         val_dataset = StreamingCascadeDataset(
             val_pairs,
@@ -429,6 +454,7 @@ def main() -> None:
             feature_dim=args.feature_dim,
             shuffle_files=False,
             sample_ratio=args.sample_ratio,
+            scaler=scaler,
         )
         test_dataset = StreamingCascadeDataset(
             test_pairs,
@@ -438,6 +464,7 @@ def main() -> None:
             feature_dim=args.feature_dim,
             shuffle_files=False,
             sample_ratio=args.sample_ratio,
+            scaler=scaler,
         )
 
         train_loader = DataLoader(
@@ -481,9 +508,18 @@ def main() -> None:
             sample_ratio=args.sample_ratio,
         )
         train_df, val_df, test_df = make_splits(merged_df, args.target_column, args.seed)
-        train_loader = make_single_file_loader(train_df, args, shuffle=True, is_cuda=is_cuda)
-        val_loader = make_single_file_loader(val_df, args, shuffle=False, is_cuda=is_cuda)
-        test_loader = make_single_file_loader(test_df, args, shuffle=False, is_cuda=is_cuda)
+
+        # Fit SequenceScaler on training split only to prevent data leakage
+        train_sequences = [
+            parse_sequence(row, args.feature_dim)
+            for row in train_df[args.sequence_column]
+        ]
+        scaler = SequenceScaler().fit(train_sequences)
+        print(f"Fitted SequenceScaler on training split (mean={scaler.mean}, scale={scaler.scale})")
+
+        train_loader = make_single_file_loader(train_df, args, shuffle=True, is_cuda=is_cuda, scaler=scaler)
+        val_loader = make_single_file_loader(val_df, args, shuffle=False, is_cuda=is_cuda, scaler=scaler)
+        test_loader = make_single_file_loader(test_df, args, shuffle=False, is_cuda=is_cuda, scaler=scaler)
 
         positives = float(train_df[args.target_column].sum())
         negatives = float(len(train_df) - positives)

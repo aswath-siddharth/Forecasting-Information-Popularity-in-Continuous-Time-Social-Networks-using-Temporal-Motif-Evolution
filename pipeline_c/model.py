@@ -48,6 +48,7 @@ class CascadeAttentionGRU(nn.Module):
         dropout: float = 0.3,
     ) -> None:
         super().__init__()
+        self.input_norm = nn.LayerNorm(input_dim)
         gru_dropout = dropout if num_layers > 1 else 0.0
         self.gru = nn.GRU(
             input_size=input_dim,
@@ -62,6 +63,7 @@ class CascadeAttentionGRU(nn.Module):
         self.head = BottleneckHead(encoded_dim, dropout)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
+        x = self.input_norm(x)
         lengths = (~padding_mask).sum(dim=1).detach().cpu()
         packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.gru(packed)
@@ -81,9 +83,11 @@ class PoolingBaseline(nn.Module):
         if mode not in {"mean", "max"}:
             raise ValueError("mode must be 'mean' or 'max'")
         self.mode = mode
+        self.input_norm = nn.LayerNorm(input_dim)
         self.head = BottleneckHead(input_dim, dropout)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
+        x = self.input_norm(x)
         valid_mask = (~padding_mask).unsqueeze(-1)
         if self.mode == "mean":
             summed = (x * valid_mask).sum(dim=1)
