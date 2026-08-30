@@ -11,7 +11,49 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset, IterableDataset, Sampler
+
+
+class LengthGroupedBatchSampler(Sampler[list[int]]):
+    """Batch sampler that groups items of similar sequence length K_i together.
+
+    This minimizes zero-padding waste within each batch, significantly reduces inter-batch
+    loss variance, and accelerates GPU tensor operations.
+    """
+
+    def __init__(
+        self,
+        lengths: Sequence[int],
+        batch_size: int,
+        shuffle: bool = True,
+        generator: torch.Generator | None = None,
+    ) -> None:
+        self.lengths = list(lengths)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.generator = generator
+
+    def __iter__(self):
+        if self.shuffle:
+            # Add small random noise to sequence lengths to maintain stochastic variation within length buckets
+            stochastic_lengths = [l + random.uniform(-1.0, 1.0) for l in self.lengths]
+            indices = np.argsort(stochastic_lengths)
+        else:
+            indices = np.argsort(self.lengths)
+
+        batches = [
+            indices[i : i + self.batch_size].tolist()
+            for i in range(0, len(indices), self.batch_size)
+        ]
+
+        if self.shuffle:
+            random.shuffle(batches)
+
+        for batch in batches:
+            yield batch
+
+    def __len__(self) -> int:
+        return (len(self.lengths) + self.batch_size - 1) // self.batch_size
 
 
 @dataclass(frozen=True)

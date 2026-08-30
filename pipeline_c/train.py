@@ -22,6 +22,7 @@ from torch.utils.data import DataLoader
 
 from .data import (
     CascadeDataset,
+    LengthGroupedBatchSampler,
     SequenceScaler,
     StreamingCascadeDataset,
     discover_file_pairs,
@@ -154,6 +155,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scheduler-type", choices=["plateau_cosine", "plateau"], default="plateau_cosine")
     parser.add_argument("--cosine-epochs", type=int, default=5)
     parser.add_argument("--lr-factor", type=float, default=0.5)
+    parser.add_argument("--use-bucket-sampler", action="store_true", default=True, help="Use LengthGroupedBatchSampler to minimize padding waste and inter-batch variance.")
+    parser.add_argument("--no-bucket-sampler", action="store_false", dest="use_bucket_sampler", help="Disable LengthGroupedBatchSampler.")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
@@ -206,6 +209,24 @@ def make_single_file_loader(
         feature_dim=args.feature_dim,
         scaler=scaler,
     )
+    if getattr(args, "use_bucket_sampler", True):
+        lengths = [
+            len(parse_sequence(row, args.feature_dim))
+            for row in df[args.sequence_column]
+        ]
+        batch_sampler = LengthGroupedBatchSampler(
+            lengths=lengths,
+            batch_size=args.batch_size,
+            shuffle=shuffle,
+        )
+        return DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=args.num_workers,
+            collate_fn=pad_collate_fn,
+            pin_memory=is_cuda,
+        )
+
     return DataLoader(
         dataset,
         batch_size=args.batch_size,
