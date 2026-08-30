@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -28,6 +29,79 @@ from .data import (
     pad_collate_fn,
 )
 from .model import CascadeAttentionGRU, PoolingBaseline
+
+
+class PlateauCosineLR:
+    """Learning rate scheduler that monitors a metric (e.g. val_loss) and applies smooth
+    Cosine Annealing transitions when a plateau is detected.
+
+    When a metric stops improving after `patience` epochs, instead of an instantaneous step drop,
+    it smoothly decays LR from start_lr to target_lr = max(start_lr * factor, min_lr) over
+    `cosine_epochs` following a half-cosine curve:
+        lr(t) = target_lr + 0.5 * (start_lr - target_lr) * (1 + cos(pi * t / N))
+    """
+
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        mode: str = "min",
+        patience: int = 3,
+        cosine_epochs: int = 5,
+        factor: float = 0.5,
+        min_lr: float = 1e-6,
+        threshold: float = 1e-4,
+    ) -> None:
+        if factor >= 1.0 or factor <= 0.0:
+            raise ValueError("factor must be strictly between 0 and 1.")
+        if mode not in ("min", "max"):
+            raise ValueError("mode must be 'min' or 'max'.")
+
+        self.optimizer = optimizer
+        self.mode = mode
+        self.patience = patience
+        self.cosine_epochs = max(1, cosine_epochs)
+        self.factor = factor
+        self.min_lr = min_lr
+        self.threshold = threshold
+
+        self.best_metric = float("inf") if mode == "min" else float("-inf")
+        self.bad_epochs = 0
+        self.is_decaying = False
+        self.decay_step = 0
+        self.start_lrs: list[float] = []
+        self.target_lrs: list[float] = []
+
+    def _is_improvement(self, metric: float) -> bool:
+        if self.mode == "min":
+            return metric < (self.best_metric - self.threshold)
+        return metric > (self.best_metric + self.threshold)
+
+    def step(self, metric: float) -> None:
+        if self.is_decaying:
+            self.decay_step += 1
+            alpha = min(1.0, self.decay_step / self.cosine_epochs)
+            cosine_factor = 0.5 * (1.0 + math.cos(math.pi * alpha))
+
+            for param_group, start_lr, target_lr in zip(self.optimizer.param_groups, self.start_lrs, self.target_lrs):
+                new_lr = target_lr + (start_lr - target_lr) * cosine_factor
+                param_group["lr"] = new_lr
+
+            if self.decay_step >= self.cosine_epochs:
+                self.is_decaying = False
+                self.bad_epochs = 0
+                if self._is_improvement(metric):
+                    self.best_metric = metric
+        else:
+            if self._is_improvement(metric):
+                self.best_metric = metric
+                self.bad_epochs = 0
+            else:
+                self.bad_epochs += 1
+                if self.bad_epochs >= self.patience:
+                    self.is_decaying = True
+                    self.decay_step = 0
+                    self.start_lrs = [group["lr"] for group in self.optimizer.param_groups]
+                    self.target_lrs = [max(lr * self.factor, self.min_lr) for lr in self.start_lrs]
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,6 +149,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--scheduler-type", choices=["plateau_cosine", "plateau"], default="plateau_cosine")
+    parser.add_argument("--cosine-epochs", type=int, default=5)
+    parser.add_argument("--lr-factor", type=float, default=0.5)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
@@ -234,21 +311,44 @@ def train_one_model(
     model = build_model(name, args).to(device)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(device))
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5)
+
+    if args.scheduler_type == "plateau_cosine":
+        scheduler = PlateauCosineLR(
+            optimizer,
+            mode="min",
+            patience=args.patience,
+            cosine_epochs=args.cosine_epochs,
+            factor=args.lr_factor,
+            min_lr=1e-6,
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", patience=args.patience, factor=args.lr_factor
+        )
 
     best_val_loss = float("inf")
     stale_epochs = 0
     history: list[dict[str, float | int | str]] = []
     checkpoint_path = output_dir / f"best_{name}_model.pt"
 
-    print(f"\n--- Training {name} ---")
+    print(f"\n--- Training {name} (Scheduler: {args.scheduler_type}) ---")
     for epoch in range(1, args.epochs + 1):
         train_loss = run_epoch(model, train_loader, criterion, device, optimizer)
         val_loss = run_epoch(model, val_loader, criterion, device)
         scheduler.step(val_loss)
-        history.append({"model": name, "epoch": epoch, "train_loss": train_loss, "val_loss": val_loss})
+        current_lr = optimizer.param_groups[0]["lr"]
+        history.append({
+            "model": name,
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "lr": current_lr,
+        })
 
-        print(f"[{name}] epoch {epoch:03d}/{args.epochs:03d} -> train_loss={train_loss:.4f} val_loss={val_loss:.4f}")
+        print(
+            f"[{name}] epoch {epoch:03d}/{args.epochs:03d} -> "
+            f"train_loss={train_loss:.4f} val_loss={val_loss:.4f} lr={current_lr:.6f}"
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
