@@ -126,8 +126,9 @@ class CSRGraph:
         self.indices = np.array(indices, dtype=np.int32)
         self.timestamps = np.array(timestamps, dtype=np.float64)
 
-    def get_neighbors(self, u_id: int) -> np.ndarray:
-        return self.indices[self.indptr[u_id]:self.indptr[u_id + 1]]
+    def get_neighbors(self, u_id: int) -> list[int]:
+        """Return dynamic out-neighbors of node u_id in O(1)."""
+        return [v for v, _ in self.adj_list.get(u_id, [])]
 
 # =====================================================================
 # STEP 2 & 3: WCOJ ENGINE & TEMPORAL DYNAMICS
@@ -139,20 +140,21 @@ class MotifAndTemporalEngine:
         self.chain_depth_threshold = chain_depth_threshold
 
     def analyze_edge(self, u_id: int, v_id: int, t_i: float, t_prev: float, post_time: float = 0.0) -> Tuple[List[float], float, Tuple[float, float, float]]:
+        """Causally evaluate topological motif and temporal dynamics *before* inserting current edge."""
         u_neighbors = self.csr.get_neighbors(u_id)
         v_neighbors = self.csr.get_neighbors(v_id)
         
-        # 1. Multi-Hot Topological Motif Indicators
-        # Reciprocal 3-Cycle: u -> v -> w -> u (where v -> w and w -> u exist)
+        # 1. Multi-Hot Topological Motif Indicators (Causal)
+        # Reciprocal 3-Cycle: u -> v completes cycle if v -> w and w -> u exist in graph
         is_cycle = 1.0 if any(u_id in self.csr.get_neighbors(w) for w in v_neighbors) else 0.0
-        # Ping-Pong Dyad: u -> v and v -> u exist
+        # Ping-Pong Dyad: u -> v completes dyad if v -> u already exists
         is_dyad = 1.0 if (u_id in v_neighbors) else 0.0
-        # Deep Chain: child depth >= chain_depth_threshold (e.g. >= 3)
-        node_depth = self.csr.node_depth.get(v_id, 1)
-        is_chain = 1.0 if (node_depth >= self.chain_depth_threshold) else 0.0
-        # Sibling Star Fork: parent u has >= 2 children in out_neighbors
-        is_star = 1.0 if (len(u_neighbors) > 1) else 0.0
-        # Single Direct Reply: active only if NO higher-order motif is present
+        # Deep Chain: child will be at depth >= K (i.e. parent_depth + 1 >= K)
+        parent_depth = self.csr.node_depth.get(u_id, 0)
+        is_chain = 1.0 if (parent_depth + 1 >= self.chain_depth_threshold) else 0.0
+        # Sibling Star Fork: parent u already has >= 1 child, so adding this edge makes >= 2 children
+        is_star = 1.0 if (len(u_neighbors) >= 1) else 0.0
+        # Single Direct Reply: active only if NO higher-order motif is triggered
         is_single = 1.0 if (is_cycle == 0.0 and is_dyad == 0.0 and is_chain == 0.0 and is_star == 0.0) else 0.0
 
         motif_vector = [is_single, is_star, is_chain, is_dyad, is_cycle]
@@ -202,7 +204,7 @@ class FeatureAssembler:
         # Vector Assembly
         vec = []
         vec.extend(motif_one_hot)                    # 0-4
-        vec.extend(csr_metrics)                      # 5-8 (depth, out_deg, count, root_dist)
+        vec.extend(csr_metrics)                      # 5-8 (depth, out_deg, count, t_from_root)
         vec.extend(sentiment_features)               # 9-12
         vec.extend(list(reactivation))               # 13-15 (I_react, T_idle, desc)
         vec.append(dt_m)                             # 16
@@ -233,41 +235,44 @@ def execute_pipeline(input_json: str, output_csv: str):
             batches = window_filter.process_thread(parser.post_id, parser.post_time, edges)
             
             csr = CSRGraph()
+            engine = MotifAndTemporalEngine(csr)
+            t_prev = 0.0
             
             for batch in batches:
-                # Update CSR graph for current batch
-                for e in batch.edges:
-                    csr.add_edge(e.src_user, e.dst_user, e.timestamp)
-                csr.build_csr()
-                
-                engine = MotifAndTemporalEngine(csr)
                 X_seq = []
-                t_prev = 0.0
 
                 for e in batch.edges:
-                    u_id = csr.node_to_id[e.src_user]
-                    v_id = csr.node_to_id[e.dst_user]
+                    # 1. Register node IDs
+                    u_id = csr._get_or_create(e.src_user)
+                    v_id = csr._get_or_create(e.dst_user)
                     
-                    # Motif & Time calculation
+                    # 2. Causally evaluate Motif & Time features (BEFORE inserting current edge into graph)
                     motif, dt_m, react = engine.analyze_edge(u_id, v_id, e.timestamp, t_prev, post_time=parser.post_time)
                     
-                    # CSR Centrality Metrics (Real computed tree depth, out-degree, node count, root distance)
-                    v_depth = float(csr.node_depth.get(v_id, 1))
+                    # 3. Add edge to graph (updates depth, parent map, ancestor descendant counts, adj_list)
+                    csr.add_edge(e.src_user, e.dst_user, e.timestamp)
+
+                    # 4. Centrality Metrics (Real computed tree depth, out-degree, node count, temporal root distance)
+                    v_depth = float(csr.node_depth.get(v_id, 0))
+                    t_from_root = max(0.0, float(e.timestamp - parser.post_time))
                     csr_metrics = [
                         v_depth,                                # Col 5: tree_depth
                         float(len(csr.get_neighbors(u_id))),    # Col 6: parent_out_degree
                         float(len(csr.node_to_id)),             # Col 7: csr_node_count
-                        v_depth                                 # Col 8: root_distance
+                        t_from_root                             # Col 8: temporal_distance_from_root (replaces duplicate depth)
                     ]
 
-                    # 20-D Matrix Stacking
+                    # 5. 20-D Matrix Stacking
                     vec = feature_assembler.build_20d_vector(
                         edge=e, motif_one_hot=motif, csr_metrics=csr_metrics, 
                         reactivation=react, dt_m=dt_m, w_idx=batch.window_idx, 
-                        cumulative=batch.cumulative_prior_comments, dt_edge=(e.timestamp - t_prev if t_prev else 0)
+                        cumulative=batch.cumulative_prior_comments, dt_edge=(e.timestamp - t_prev if t_prev else 0.0)
                     )
                     X_seq.append(vec.tolist())
                     t_prev = e.timestamp
+
+                # Build contiguous CSR array buffers for current batch
+                csr.build_csr()
 
                 # Serialization to CSV
                 X_seq_json = json.dumps(X_seq)
