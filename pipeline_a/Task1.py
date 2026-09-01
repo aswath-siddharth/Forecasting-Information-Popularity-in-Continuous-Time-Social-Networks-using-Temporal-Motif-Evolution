@@ -81,12 +81,29 @@ class CSRGraph:
         self.indices = np.array([], dtype=np.int32)
         self.timestamps = np.array([], dtype=np.float64)
         self.node_history: Dict[int, List[float]] = {}
+        self.node_depth: Dict[int, int] = {}
+        self.parent_map: Dict[int, int] = {}
+        self.descendant_counts: Dict[int, int] = {}
 
     def add_edge(self, u_str: str, v_str: str, timestamp: float):
         u = self._get_or_create(u_str)
         v = self._get_or_create(v_str)
         self.adj_list[u].append((v, timestamp))
         self.node_history.setdefault(v, []).append(timestamp)
+
+        # Set parent pointer for ancestor traversal
+        self.parent_map[v] = u
+
+        # Incremental tree depth from root post
+        parent_depth = self.node_depth.setdefault(u, 0)
+        self.node_depth[v] = parent_depth + 1
+
+        # Increment descendant counts for all ancestors in tree
+        curr = u
+        while curr is not None:
+            self.descendant_counts[curr] = self.descendant_counts.get(curr, 0) + 1
+            curr = self.parent_map.get(curr)
+
         return u, v
 
     def _get_or_create(self, node_str: str) -> int:
@@ -117,46 +134,53 @@ class CSRGraph:
 # =====================================================================
 
 class MotifAndTemporalEngine:
-    def __init__(self, csr: CSRGraph):
+    def __init__(self, csr: CSRGraph, chain_depth_threshold: int = 3):
         self.csr = csr
+        self.chain_depth_threshold = chain_depth_threshold
 
-    def analyze_edge(self, u_id: int, v_id: int, t_i: float, t_prev: float) -> Tuple[List[float], float, Tuple[float, float, float]]:
-        # 1. WCOJ Motif Detection (Simplified Leapfrog approximations)
-        motif_one_hot = [0.0] * 5
+    def analyze_edge(self, u_id: int, v_id: int, t_i: float, t_prev: float, post_time: float = 0.0) -> Tuple[List[float], float, Tuple[float, float, float]]:
         u_neighbors = self.csr.get_neighbors(u_id)
         v_neighbors = self.csr.get_neighbors(v_id)
         
-        # Ping-Pong Dyad (u->v and v->u)
-        is_dyad = u_id in v_neighbors
-        # Sibling Star Fork (u->v and u->w)
-        is_star = len(u_neighbors) > 1
-        # Deep Chain (w->u->v)
-        is_chain = any(u_id in self.csr.get_neighbors(n) for n in range(len(self.csr.node_to_id)))
-        # Reciprocal Cycle (u->v->w->u)
-        is_cycle = any(n in self.csr.get_neighbors(v_id) and u_id in self.csr.get_neighbors(n) for n in v_neighbors)
+        # 1. Multi-Hot Topological Motif Indicators
+        # Reciprocal 3-Cycle: u -> v -> w -> u (where v -> w and w -> u exist)
+        is_cycle = 1.0 if any(u_id in self.csr.get_neighbors(w) for w in v_neighbors) else 0.0
+        # Ping-Pong Dyad: u -> v and v -> u exist
+        is_dyad = 1.0 if (u_id in v_neighbors) else 0.0
+        # Deep Chain: child depth >= chain_depth_threshold (e.g. >= 3)
+        node_depth = self.csr.node_depth.get(v_id, 1)
+        is_chain = 1.0 if (node_depth >= self.chain_depth_threshold) else 0.0
+        # Sibling Star Fork: parent u has >= 2 children in out_neighbors
+        is_star = 1.0 if (len(u_neighbors) > 1) else 0.0
+        # Single Direct Reply: active only if NO higher-order motif is present
+        is_single = 1.0 if (is_cycle == 0.0 and is_dyad == 0.0 and is_chain == 0.0 and is_star == 0.0) else 0.0
 
-        if is_cycle: motif_one_hot[4] = 1.0
-        elif is_dyad: motif_one_hot[3] = 1.0
-        elif is_chain: motif_one_hot[2] = 1.0
-        elif is_star: motif_one_hot[1] = 1.0
-        else: motif_one_hot[0] = 1.0 # Single Direct Reply
+        motif_vector = [is_single, is_star, is_chain, is_dyad, is_cycle]
 
         # 2. Temporal Dynamics
         dt_edge = t_i - t_prev if t_prev > 0 else 0.0
         
-        # Motif Completion Speed (Earliest edge trigger)
+        # Motif Completion Speed (Earliest edge trigger on parent u)
         history_u = self.csr.node_history.get(u_id, [t_i])
         t_trigger = min(history_u)
         dt_m = t_i - t_trigger
 
-        # 3. Reactivation Engine (T_threshold = 300s)
+        # 3. Reactivation & Dormancy Engine (T_threshold = 300s)
         history_v_prev = [t for t in self.csr.node_history.get(v_id, []) if t < t_i]
-        t_idle = (t_i - max(history_v_prev)) if history_v_prev else 0.0
-        i_reactivate = 1.0 if t_idle > 300.0 else 0.0
-        
-        reactivation_flags = (i_reactivate, t_idle, 0.0) # 0.0 placeholder for descendant count
+        if history_v_prev:
+            # Returning user: idle time since their last comment
+            t_idle = t_i - max(history_v_prev)
+            i_reactivate = 1.0 if t_idle > 300.0 else 0.0
+        else:
+            # First-time user joining: elapsed time since post inception
+            t_idle = max(0.0, t_i - post_time)
+            i_reactivate = 0.0
 
-        return motif_one_hot, dt_m, reactivation_flags
+        # Subtree / descendant count of parent u
+        descendant_count = float(self.csr.descendant_counts.get(u_id, 0))
+        reactivation_flags = (i_reactivate, t_idle, descendant_count)
+
+        return motif_vector, dt_m, reactivation_flags
 
 # =====================================================================
 # STEP 4: CONTENT ANALYSIS & 20-D MATRIX ASSEMBLY
@@ -225,10 +249,16 @@ def execute_pipeline(input_json: str, output_csv: str):
                     v_id = csr.node_to_id[e.dst_user]
                     
                     # Motif & Time calculation
-                    motif, dt_m, react = engine.analyze_edge(u_id, v_id, e.timestamp, t_prev)
+                    motif, dt_m, react = engine.analyze_edge(u_id, v_id, e.timestamp, t_prev, post_time=parser.post_time)
                     
-                    # CSR Centrality Metrics (Mocked for speed; derive using BFS/DFS in prod)
-                    csr_metrics = [1.0, float(len(csr.get_neighbors(u_id))), float(len(csr.node_to_id)), 1.0]
+                    # CSR Centrality Metrics (Real computed tree depth, out-degree, node count, root distance)
+                    v_depth = float(csr.node_depth.get(v_id, 1))
+                    csr_metrics = [
+                        v_depth,                                # Col 5: tree_depth
+                        float(len(csr.get_neighbors(u_id))),    # Col 6: parent_out_degree
+                        float(len(csr.node_to_id)),             # Col 7: csr_node_count
+                        v_depth                                 # Col 8: root_distance
+                    ]
 
                     # 20-D Matrix Stacking
                     vec = feature_assembler.build_20d_vector(
