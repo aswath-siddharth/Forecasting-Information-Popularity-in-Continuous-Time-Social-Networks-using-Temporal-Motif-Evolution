@@ -91,16 +91,27 @@ class CSRGraph:
         self.adj_list[u].append((v, timestamp))
         self.node_history.setdefault(v, []).append(timestamp)
 
-        # Set parent pointer for ancestor traversal
-        self.parent_map[v] = u
+        # Set parent pointer for ancestor traversal.
+        # Skip self-loops (a user replying to their own earlier comment, u == v)
+        # and skip re-parenting a node that has already been assigned a parent
+        # elsewhere in the tree — both of these can otherwise create cycles in
+        # parent_map (since nodes are keyed by *user*, and the same user can
+        # legitimately appear at multiple positions in a reply tree).
+        if u != v and v not in self.parent_map:
+            self.parent_map[v] = u
 
         # Incremental tree depth from root post
         parent_depth = self.node_depth.setdefault(u, 0)
-        self.node_depth[v] = parent_depth + 1
+        if v not in self.node_depth:
+            self.node_depth[v] = parent_depth + 1
 
-        # Increment descendant counts for all ancestors in tree
+        # Increment descendant counts for all ancestors in tree.
+        # Guard with a `visited` set so that any residual cycle (or a very
+        # deep/pathological chain) can never spin forever.
         curr = u
-        while curr is not None:
+        visited = set()
+        while curr is not None and curr not in visited:
+            visited.add(curr)
             self.descendant_counts[curr] = self.descendant_counts.get(curr, 0) + 1
             curr = self.parent_map.get(curr)
 
@@ -325,7 +336,7 @@ def process_directory(data_dir: str, output_dir: str):
 if __name__ == "__main__":
     # Define root input folder and where the CSVs should be generated
     INPUT_DATA_DIR = "data"
-    OUTPUT_DATA_DIR = "output_features"
+    OUTPUT_DATA_DIR = "output_features1"
     
     process_directory(INPUT_DATA_DIR, OUTPUT_DATA_DIR)
     print("\nAll processing complete.")
