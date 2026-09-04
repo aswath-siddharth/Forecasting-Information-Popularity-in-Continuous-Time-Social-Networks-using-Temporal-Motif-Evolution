@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import gc
 import json
-import random
 import math
+import os
+import random
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -168,8 +173,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate (default: 0.0003).")
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", default=None)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--device", default=None, help="Device to use ('cuda', 'cpu', or None for auto-detection).")
+    default_workers = 0 if os.name == "nt" else min(2, (os.cpu_count() or 1))
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=default_workers,
+        help=f"Number of DataLoader worker processes (default: {default_workers}, tuned for RAM/OS safety).",
+    )
+    parser.add_argument(
+        "--amp",
+        action="store_true",
+        default=True,
+        help="Use Automatic Mixed Precision (AMP) on CUDA to reduce VRAM consumption and speed up training.",
+    )
+    parser.add_argument(
+        "--no-amp",
+        action="store_false",
+        dest="amp",
+        help="Disable Automatic Mixed Precision.",
+    )
     return parser.parse_args()
 
 
@@ -183,8 +206,9 @@ def set_seed(seed: int) -> None:
 
 
 def make_splits(df: pd.DataFrame, target_column: str, seed: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    has_multiple_classes = df[target_column].nunique() > 1
-    stratify_col = df[target_column] if has_multiple_classes else None
+    counts = df[target_column].value_counts()
+    has_enough_classes = len(counts) > 1 and counts.min() >= 2
+    stratify_col = df[target_column] if has_enough_classes else None
 
     train_df, temp_df = train_test_split(
         df,
@@ -193,7 +217,9 @@ def make_splits(df: pd.DataFrame, target_column: str, seed: int) -> tuple[pd.Dat
         stratify=stratify_col,
     )
 
-    temp_stratify = temp_df[target_column] if (has_multiple_classes and temp_df[target_column].nunique() > 1) else None
+    temp_counts = temp_df[target_column].value_counts()
+    has_enough_temp = len(temp_counts) > 1 and temp_counts.min() >= 2
+    temp_stratify = temp_df[target_column] if has_enough_temp else None
     val_df, test_df = train_test_split(
         temp_df,
         test_size=0.5,
@@ -217,6 +243,7 @@ def make_single_file_loader(
         feature_dim=args.feature_dim,
         scaler=scaler,
     )
+    pin_mem = bool(is_cuda and torch.cuda.is_available())
     if getattr(args, "use_bucket_sampler", True):
         lengths = [
             len(parse_sequence(row, args.feature_dim))
@@ -232,7 +259,7 @@ def make_single_file_loader(
             batch_sampler=batch_sampler,
             num_workers=args.num_workers,
             collate_fn=pad_collate_fn,
-            pin_memory=is_cuda,
+            pin_memory=pin_mem,
         )
 
     return DataLoader(
@@ -241,7 +268,7 @@ def make_single_file_loader(
         shuffle=shuffle,
         num_workers=args.num_workers,
         collate_fn=pad_collate_fn,
-        pin_memory=is_cuda,
+        pin_memory=pin_mem,
     )
 
 
@@ -251,11 +278,14 @@ def run_epoch(
     criterion: torch.nn.Module,
     device: torch.device,
     optimizer: torch.optim.Optimizer | None = None,
+    scaler: torch.amp.GradScaler | None = None,
+    use_amp: bool = False,
 ) -> float:
     is_training = optimizer is not None
     model.train(is_training)
     total_loss = 0.0
     total_batches = 0
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
     for batch in loader:
         if batch is None:
@@ -264,19 +294,27 @@ def run_epoch(
         if x.nelement() == 0 or labels.nelement() == 0:
             continue
 
-        x = x.to(device)
-        padding_mask = padding_mask.to(device)
-        labels = labels.to(device)
+        x = x.to(device, non_blocking=True)
+        padding_mask = padding_mask.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
 
         with torch.set_grad_enabled(is_training):
-            logits = model(x, padding_mask)
-            loss = criterion(logits, labels)
+            with torch.amp.autocast(device_type=device_type, enabled=use_amp):
+                logits = model(x, padding_mask)
+                loss = criterion(logits, labels)
 
-            if is_training:
+            if is_training and optimizer is not None:
                 optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                if scaler is not None and use_amp:
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
 
         total_loss += loss.item()
         total_batches += 1
@@ -284,10 +322,16 @@ def run_epoch(
     return total_loss / max(total_batches, 1)
 
 
-def evaluate_model(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> dict[str, float]:
+def evaluate_model(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    use_amp: bool = False,
+) -> dict[str, float]:
     model.eval()
     probabilities: list[float] = []
     labels: list[int] = []
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
     with torch.no_grad():
         for batch in loader:
@@ -296,7 +340,8 @@ def evaluate_model(model: torch.nn.Module, loader: DataLoader, device: torch.dev
             x, padding_mask, y = batch
             if x.nelement() == 0:
                 continue
-            logits = model(x.to(device), padding_mask.to(device))
+            with torch.amp.autocast(device_type=device_type, enabled=use_amp):
+                logits = model(x.to(device, non_blocking=True), padding_mask.to(device, non_blocking=True))
             probabilities.extend(torch.sigmoid(logits).cpu().numpy().reshape(-1).tolist())
             labels.extend(y.numpy().reshape(-1).astype(int).tolist())
 
@@ -352,6 +397,9 @@ def train_one_model(
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(device))
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    use_amp = bool(args.amp and device.type == "cuda")
+    grad_scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
+
     if args.scheduler_type == "plateau_cosine":
         scheduler = PlateauCosineLR(
             optimizer,
@@ -371,10 +419,10 @@ def train_one_model(
     history: list[dict[str, float | int | str]] = []
     checkpoint_path = output_dir / f"best_{name}_model.pt"
 
-    print(f"\n--- Training {name} (Scheduler: {args.scheduler_type}) ---")
+    print(f"\n--- Training {name} (Scheduler: {args.scheduler_type}, AMP: {use_amp}) ---")
     for epoch in range(1, args.epochs + 1):
-        train_loss = run_epoch(model, train_loader, criterion, device, optimizer)
-        val_loss = run_epoch(model, val_loader, criterion, device)
+        train_loss = run_epoch(model, train_loader, criterion, device, optimizer, scaler=grad_scaler, use_amp=use_amp)
+        val_loss = run_epoch(model, val_loader, criterion, device, use_amp=use_amp)
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
         history.append({
@@ -401,11 +449,16 @@ def train_one_model(
                 break
 
     model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
-    metrics = evaluate_model(model, test_loader, device)
+    metrics = evaluate_model(model, test_loader, device, use_amp=use_amp)
     metrics["best_val_loss"] = float(best_val_loss)
 
     if name == "attention_gru":
         torch.save(model.state_dict(), output_dir / "best_cascade_model.pt")
+
+    del model, optimizer, criterion, scheduler
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
 
     return metrics, history
 
@@ -416,7 +469,7 @@ def save_loss_curves(history_df: pd.DataFrame, output_dir: Path) -> None:
         plt.plot(model_history["epoch"], model_history["train_loss"], label=f"{model_name} train")
         plt.plot(model_history["epoch"], model_history["val_loss"], linestyle="--", label=f"{model_name} val")
     plt.xlabel("Epoch")
-    plt.ylabel("BCEWithLogits Loss")
+    plt.ylabel("Loss")
     plt.legend()
     plt.tight_layout()
     plt.savefig(output_dir / "loss_curves.png", dpi=160)
@@ -424,6 +477,10 @@ def save_loss_curves(history_df: pd.DataFrame, output_dir: Path) -> None:
 
 
 def main() -> None:
+    print("=" * 65, flush=True)
+    print(" PIPELINE C: TEMPORAL CASCADE VIRALITY MODEL TRAINING", flush=True)
+    print("=" * 65, flush=True)
+
     args = parse_args()
     set_seed(args.seed)
 
@@ -432,11 +489,36 @@ def main() -> None:
 
     features_path = Path(args.features)
     labels_path = Path(args.labels)
-    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+
+    raw_device = (args.device or "").strip().lower()
+    if raw_device in ("gpu", "cuda"):
+        if torch.cuda.is_available():
+            device_str = "cuda"
+        else:
+            print("[WARNING] GPU was requested but CUDA is not available. Falling back to CPU.", flush=True)
+            device_str = "cpu"
+    elif raw_device:
+        device_str = raw_device
+    else:
+        device_str = "cuda" if torch.cuda.is_available() else "cpu"
+
+    device = torch.device(device_str)
     is_cuda = (device.type == "cuda")
 
+    if is_cuda:
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "CUDA Device"
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3) if torch.cuda.device_count() > 0 else 0
+        print(f"• Hardware Device : GPU ({gpu_name}, {vram_gb:.2f} GB VRAM)", flush=True)
+        print(f"• Mixed Precision : {'Enabled (AMP FP16)' if args.amp else 'Disabled'}", flush=True)
+    else:
+        threads = min(4, os.cpu_count() or 1)
+        torch.set_num_threads(threads)
+        print(f"• Hardware Device : CPU ({threads} threads allocated)", flush=True)
+
+    pin_mem = bool(is_cuda and torch.cuda.is_available())
+
     if features_path.is_dir():
-        print(f"Discovered features directory: {features_path}")
+        print(f"• Discovering feature files in: {features_path}...", flush=True)
         train_pairs, val_pairs, test_pairs = discover_file_pairs(
             features_dir=features_path,
             data_dir=args.data_dir,
@@ -445,21 +527,32 @@ def main() -> None:
             seed=args.seed,
         )
         total_files = len(train_pairs) + len(val_pairs) + len(test_pairs)
-        print(f"Total subreddit files: {total_files} (Train: {len(train_pairs)}, Val: {len(val_pairs)}, Test: {len(test_pairs)})")
+        print(
+            f"• Subreddit files discovered: {total_files} "
+            f"(Train: {len(train_pairs)}, Val: {len(val_pairs)}, Test: {len(test_pairs)})",
+            flush=True,
+        )
 
+        print(f"• Loading virality labels map from {labels_path}...", flush=True)
         labels_map = load_labels_map(labels_path, target_column=args.target_column)
         positives = float(sum(labels_map.values()))
         negatives = float(len(labels_map) - positives)
         prior_prob = positives / max(positives + negatives, 1.0)
         raw_pos_ratio = negatives / max(positives, 1.0)
         damped_pos_ratio = math.sqrt(raw_pos_ratio)
+        print(
+            f"• Ingested {len(labels_map):,} labels "
+            f"(Viral: {int(positives):,}, Non-viral: {int(negatives):,}, Prior: {prior_prob:.4%})",
+            flush=True,
+        )
 
         if args.loss_type == "bce_damped":
             pos_weight = torch.tensor([damped_pos_ratio], dtype=torch.float32)
         else:
             pos_weight = torch.tensor([raw_pos_ratio], dtype=torch.float32)
 
-        # Fit SequenceScaler on sample of training sequences to prevent data leakage
+        # Fit SequenceScaler on sample of training sequences to prevent data leakage & OOM
+        print("• Fitting SequenceScaler on sample of training sequences...", flush=True)
         def _get_train_seqs():
             count = 0
             for feat_file, _ in train_pairs[:20]:
@@ -477,7 +570,7 @@ def main() -> None:
                     continue
 
         scaler = SequenceScaler().fit(_get_train_seqs())
-        print(f"Fitted SequenceScaler on training split (mean={scaler.mean}, scale={scaler.scale})")
+        print(f"• SequenceScaler fitted successfully on training split.", flush=True)
 
         train_dataset = StreamingCascadeDataset(
             train_pairs,
@@ -515,21 +608,21 @@ def main() -> None:
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             collate_fn=pad_collate_fn,
-            pin_memory=is_cuda,
+            pin_memory=pin_mem,
         )
         val_loader = DataLoader(
             val_dataset,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             collate_fn=pad_collate_fn,
-            pin_memory=is_cuda,
+            pin_memory=pin_mem,
         )
         test_loader = DataLoader(
             test_dataset,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             collate_fn=pad_collate_fn,
-            pin_memory=is_cuda,
+            pin_memory=pin_mem,
         )
 
         dataset_meta = {
@@ -542,7 +635,7 @@ def main() -> None:
         }
     else:
         # Single-file mode
-        print(f"Loading single features file: {features_path}")
+        print(f"• Ingesting single features file: {features_path}...", flush=True)
         merged_df, join_stats = load_single_file_data(
             features_path,
             labels_path,
@@ -552,13 +645,20 @@ def main() -> None:
         )
         train_df, val_df, test_df = make_splits(merged_df, args.target_column, args.seed)
 
-        # Fit SequenceScaler on training split only to prevent data leakage
-        train_sequences = [
-            parse_sequence(row, args.feature_dim)
-            for row in train_df[args.sequence_column]
-        ]
-        scaler = SequenceScaler().fit(train_sequences)
-        print(f"Fitted SequenceScaler on training split (mean={scaler.mean}, scale={scaler.scale})")
+        # Fit SequenceScaler on sample of training split only to prevent data leakage & OOM
+        print("• Fitting SequenceScaler on sample of training split...", flush=True)
+        def _sample_train_seqs():
+            max_samples = 3000
+            sample_rows = (
+                train_df[args.sequence_column].iloc[:max_samples]
+                if len(train_df) > max_samples
+                else train_df[args.sequence_column]
+            )
+            for row in sample_rows:
+                yield parse_sequence(row, args.feature_dim)
+
+        scaler = SequenceScaler().fit(_sample_train_seqs())
+        print(f"• SequenceScaler fitted successfully on training split.", flush=True)
 
         train_loader = make_single_file_loader(train_df, args, shuffle=True, is_cuda=is_cuda, scaler=scaler)
         val_loader = make_single_file_loader(val_df, args, shuffle=False, is_cuda=is_cuda, scaler=scaler)
@@ -587,9 +687,10 @@ def main() -> None:
     print(
         f"device={device} | loss_type={args.loss_type} | prior_prob={prior_prob:.4f} | "
         f"pos_weight={pos_weight.item():.4f} (raw={raw_pos_ratio:.4f}, damped={damped_pos_ratio:.4f}) | "
-        f"streaming_workers={args.num_workers}"
+        f"workers={args.num_workers} | amp={args.amp and is_cuda}",
+        flush=True,
     )
-    print(f"dataset info: {dataset_meta}")
+    print(f"dataset info: {dataset_meta}", flush=True)
 
     all_metrics: dict[str, dict[str, float]] = {}
     all_history: list[dict[str, float | int | str]] = []
@@ -632,8 +733,8 @@ def main() -> None:
     (output_dir / "evaluation_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    print("\n--- Final Evaluation Report ---")
-    print(json.dumps(report, indent=2))
+    print("\n--- Final Evaluation Report ---", flush=True)
+    print(json.dumps(report, indent=2), flush=True)
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ class CascadeAttentionGRU(nn.Module):
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
         x = self.input_norm(x)
-        lengths = (~padding_mask).sum(dim=1).detach().cpu()
+        lengths = (~padding_mask).sum(dim=1).clamp_min(1).detach().cpu()
         packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.gru(packed)
         hidden_states, _ = pad_packed_sequence(packed_output, batch_first=True, total_length=x.shape[1])

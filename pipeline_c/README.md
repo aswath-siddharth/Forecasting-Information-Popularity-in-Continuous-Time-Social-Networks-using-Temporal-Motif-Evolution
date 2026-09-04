@@ -44,9 +44,12 @@ python -m pipeline_c.train --features output_features --labels pipeline_b_labels
 | `--category` | `None` | Optional category filter (e.g. `Sports`, `Technology`, `Gaming`, `Animals and Pets`). |
 | `--max-files` | `None` | Limit number of subreddit CSV files to ingest. |
 | `--sample-ratio` | `1.0` | Subsample fraction (0.0 to 1.0) of records. |
-| `--epochs` | `50` | Number of training epochs. |
-| `--batch-size` | `64` | Training batch size. |
-| `--lr` | `1e-3` | Learning rate for AdamW optimizer. |
+| `--epochs` | `20` | Number of training epochs. |
+| `--batch-size` | `256` | Training batch size. |
+| `--loss-type` | `focal` | Virality loss function (`focal`, `bce_damped`, `bce_raw`). |
+| `--lr` | `3e-4` | Initial learning rate for AdamW optimizer. |
+| `--num-workers` | Auto (`0` on Windows, `2` on Linux) | DataLoader worker count tuned for RAM & OS stability. |
+| `--amp` / `--no-amp` | `True` | Automatic Mixed Precision (AMP) on CUDA to halve VRAM usage. |
 | `--device` | `None` (auto: CUDA/CPU) | Compute device. |
 
 ## Outputs
