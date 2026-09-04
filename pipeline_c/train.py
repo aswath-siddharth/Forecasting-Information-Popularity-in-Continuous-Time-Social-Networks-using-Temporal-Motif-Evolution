@@ -31,7 +31,7 @@ from .data import (
     pad_collate_fn,
     parse_sequence,
 )
-from .model import CascadeAttentionGRU, PoolingBaseline
+from .model import BinaryFocalLossWithLogits, CascadeAttentionGRU, PoolingBaseline
 
 
 class PlateauCosineLR:
@@ -148,16 +148,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden-size", type=int, default=64)
     parser.add_argument("--num-layers", type=int, default=1)
     parser.add_argument("--attention-dim", type=int, default=64)
+    parser.add_argument(
+        "--loss-type",
+        choices=["focal", "bce_damped", "bce_raw"],
+        default="focal",
+        help="Loss function for imbalanced virality classification: 'focal' (recommended), 'bce_damped' (sqrt pos_weight), or 'bce_raw'.",
+    )
+    parser.add_argument("--focal-gamma", type=float, default=2.0, help="Focusing parameter gamma for Focal Loss.")
+    parser.add_argument("--focal-alpha", type=float, default=0.75, help="Alpha class balance weight for Focal Loss.")
     parser.add_argument("--dropout", type=float, default=0.3)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--patience", type=int, default=3, help="Plateau and early stopping patience (epochs).")
     parser.add_argument("--scheduler-type", choices=["plateau_cosine", "plateau"], default="plateau_cosine")
-    parser.add_argument("--cosine-epochs", type=int, default=5)
+    parser.add_argument("--cosine-epochs", type=int, default=3, help="Duration of cosine decay transitions.")
     parser.add_argument("--lr-factor", type=float, default=0.5)
     parser.add_argument("--use-bucket-sampler", action="store_true", default=True, help="Use LengthGroupedBatchSampler to minimize padding waste and inter-batch variance.")
     parser.add_argument("--no-bucket-sampler", action="store_false", dest="use_bucket_sampler", help="Disable LengthGroupedBatchSampler.")
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate (default: 0.0003).")
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=None)
@@ -330,11 +338,18 @@ def train_one_model(
     val_loader: DataLoader,
     test_loader: DataLoader,
     pos_weight: torch.Tensor,
+    prior_prob: float,
     device: torch.device,
     output_dir: Path,
 ) -> tuple[dict[str, float], list[dict[str, float | int | str]]]:
     model = build_model(name, args).to(device)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(device))
+    if hasattr(model, "init_prior_bias"):
+        model.init_prior_bias(prior_prob)
+
+    if args.loss_type == "focal":
+        criterion = BinaryFocalLossWithLogits(alpha=args.focal_alpha, gamma=args.focal_gamma)
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(device))
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.scheduler_type == "plateau_cosine":
@@ -433,9 +448,16 @@ def main() -> None:
         print(f"Total subreddit files: {total_files} (Train: {len(train_pairs)}, Val: {len(val_pairs)}, Test: {len(test_pairs)})")
 
         labels_map = load_labels_map(labels_path, target_column=args.target_column)
-        positives = sum(labels_map.values())
-        negatives = len(labels_map) - positives
-        pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32)
+        positives = float(sum(labels_map.values()))
+        negatives = float(len(labels_map) - positives)
+        prior_prob = positives / max(positives + negatives, 1.0)
+        raw_pos_ratio = negatives / max(positives, 1.0)
+        damped_pos_ratio = math.sqrt(raw_pos_ratio)
+
+        if args.loss_type == "bce_damped":
+            pos_weight = torch.tensor([damped_pos_ratio], dtype=torch.float32)
+        else:
+            pos_weight = torch.tensor([raw_pos_ratio], dtype=torch.float32)
 
         # Fit SequenceScaler on sample of training sequences to prevent data leakage
         def _get_train_seqs():
@@ -544,7 +566,14 @@ def main() -> None:
 
         positives = float(train_df[args.target_column].sum())
         negatives = float(len(train_df) - positives)
-        pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32)
+        prior_prob = positives / max(positives + negatives, 1.0)
+        raw_pos_ratio = negatives / max(positives, 1.0)
+        damped_pos_ratio = math.sqrt(raw_pos_ratio)
+
+        if args.loss_type == "bce_damped":
+            pos_weight = torch.tensor([damped_pos_ratio], dtype=torch.float32)
+        else:
+            pos_weight = torch.tensor([raw_pos_ratio], dtype=torch.float32)
 
         dataset_meta = {
             "mode": "single_file",
@@ -555,7 +584,11 @@ def main() -> None:
             "test_rows": len(test_df),
         }
 
-    print(f"device={device} | pos_weight={pos_weight.item():.4f} | streaming_workers={args.num_workers}")
+    print(
+        f"device={device} | loss_type={args.loss_type} | prior_prob={prior_prob:.4f} | "
+        f"pos_weight={pos_weight.item():.4f} (raw={raw_pos_ratio:.4f}, damped={damped_pos_ratio:.4f}) | "
+        f"streaming_workers={args.num_workers}"
+    )
     print(f"dataset info: {dataset_meta}")
 
     all_metrics: dict[str, dict[str, float]] = {}
@@ -568,6 +601,7 @@ def main() -> None:
             val_loader,
             test_loader,
             pos_weight,
+            prior_prob,
             device,
             output_dir,
         )
