@@ -1,0 +1,39 @@
+{
+  "dataset_meta": {
+    "mode": "streaming_directory",
+    "total_files": 20,
+    "train_files": 16,
+    "val_files": 2,
+    "test_files": 2,
+    "labels_count": 1200698
+  },
+  "metrics": {
+    "attention_gru": {
+      "roc_auc": 0.8312120893167128,
+      "pr_auc": 0.5527211751211891,
+      "f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "total_test_samples": 4409,
+      "best_val_loss": 2.5420512513665017
+    },
+    "mean_pool": {
+      "roc_auc": 0.8322694221110136,
+      "pr_auc": 0.615343832448026,
+      "f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "total_test_samples": 4409,
+      "best_val_loss": 2.972009162287577
+    },
+    "max_pool": {
+      "roc_auc": 0.8421655706606894,
+      "pr_auc": 0.6214607474984729,
+      "f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "total_test_samples": 4409,
+      "best_val_loss": 2.2327228350623045
+    }
+  }
+}

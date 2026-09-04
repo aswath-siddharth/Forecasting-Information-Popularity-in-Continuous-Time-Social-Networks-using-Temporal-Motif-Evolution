@@ -59,6 +59,7 @@ env.bak/
 venv.bak/
 output_features/
 data/
+output_features1/
 # IDEs and editors
 .vscode/
 .idea/

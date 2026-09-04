@@ -1,0 +1,20 @@
+{
+  "input_feature_dim": 20,
+  "hidden_size": 64,
+  "num_layers": 1,
+  "attention_dim": 64,
+  "dropout": 0.3,
+  "threshold": 0.5,
+  "pos_weight": 16.6130313873291,
+  "best_model": "attention_gru",
+  "checkpoint": "best_cascade_model.pt",
+  "metrics": {
+    "roc_auc": 0.8312120893167128,
+    "pr_auc": 0.5527211751211891,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "total_test_samples": 4409,
+    "best_val_loss": 2.5420512513665017
+  }
+}
