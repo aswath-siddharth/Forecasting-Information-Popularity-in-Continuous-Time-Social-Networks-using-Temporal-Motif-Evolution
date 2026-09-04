@@ -47,7 +47,7 @@ class LearnedAttentionPooling(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, padding_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         scores = self.scorer(hidden_states).squeeze(-1)
-        scores = scores.masked_fill(padding_mask, -1e9)
+        scores = scores.masked_fill(padding_mask, -1e4)
         weights = torch.softmax(scores, dim=1)
         context = torch.bmm(weights.unsqueeze(1), hidden_states).squeeze(1)
         return context, weights
