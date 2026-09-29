@@ -1,0 +1,87 @@
+{
+  "setting": {
+    "dataset": "Sina Weibo (released with DeepHawkes, Cao et al., CIKM 2017)",
+    "observation_window_seconds": 3600,
+    "prediction_horizon_hours": 24,
+    "target": "increment retweets (DeepHawkes target = increment after the window)",
+    "loss": "MSE on log2(y+1), i.e. MSLE in log2 units",
+    "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
+    "feature_dim": 15,
+    "note": "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. This run uses a 15-minute window, which is a strictly harder early-prediction setting and is NOT directly comparable to their published numbers."
+  },
+  "data": {
+    "train_cascades": 29530,
+    "val_cascades": 6328,
+    "test_cascades": 6328,
+    "mean_events_per_cascade": 61.73000338638673
+  },
+  "results": {
+    "mean_baseline": {
+      "metrics": {
+        "MSLE_log2": 5.282547290831118,
+        "MSLE_ln": 2.5380157670452403,
+        "RMSLE_log2": 2.2983792748002054,
+        "MAE_count": 105.31847164602894,
+        "RMSE_count": 688.0102416188231,
+        "MedAE_count": 21.49562763528598,
+        "R2_log2": -0.000317448366358164,
+        "PCC_log2": NaN,
+        "n_samples": 6328
+      }
+    },
+    "attention_gru": {
+      "metrics": {
+        "MSLE_log2": 1.9803564047736104,
+        "MSLE_ln": 0.9514682033056947,
+        "RMSLE_log2": 1.4072513651702778,
+        "MAE_count": 77.78030545717145,
+        "RMSE_count": 656.678360681595,
+        "MedAE_count": 12.468412653343911,
+        "R2_log2": 0.624994355068978,
+        "PCC_log2": 0.7933356757958855,
+        "n_samples": 6328,
+        "best_val_MSLE_log2": 2.007412749709505
+      },
+      "classification": {
+        "cutoff_count": 405.0,
+        "decision_threshold_log2": 8.554610975830998,
+        "val_f1_at_threshold": 0.6488095238095238,
+        "positive_rate": 0.04725031605562579,
+        "accuracy": 0.9600189633375474,
+        "precision": 0.5815602836879432,
+        "recall": 0.5484949832775919,
+        "f1": 0.5645438898450946,
+        "roc_auc": 0.8768505179259001,
+        "pr_auc": 0.5801008346724559
+      }
+    },
+    "mean_pool": {
+      "metrics": {
+        "MSLE_log2": 2.082863775209804,
+        "MSLE_ln": 1.0007181783805934,
+        "RMSLE_log2": 1.443213004102237,
+        "MAE_count": 76.08034832674194,
+        "RMSE_count": 661.5287909926467,
+        "MedAE_count": 11.580046343279431,
+        "R2_log2": 0.6055832821590983,
+        "PCC_log2": 0.7784152774299234,
+        "n_samples": 6328,
+        "best_val_MSLE_log2": 2.1828727445217093
+      }
+    },
+    "max_pool": {
+      "metrics": {
+        "MSLE_log2": 2.2304151504624543,
+        "MSLE_ln": 1.0716096813285048,
+        "RMSLE_log2": 1.4934574484940824,
+        "MAE_count": 81.4616122213891,
+        "RMSE_count": 671.8944915111142,
+        "MedAE_count": 11.685297090202813,
+        "R2_log2": 0.5776425546699953,
+        "PCC_log2": 0.7614510858540974,
+        "n_samples": 6328,
+        "best_val_MSLE_log2": 2.3826466473666104
+      }
+    }
+  }
+}
