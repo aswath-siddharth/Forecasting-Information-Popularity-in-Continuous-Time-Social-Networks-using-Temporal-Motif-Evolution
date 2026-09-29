@@ -70,3 +70,9 @@ output_features1/
 .DS_Store
 Thumbs.db
 
+
+# Pipeline W: Weibo benchmark data.
+# The raw DeepHawkes dump, the CCGL bundle it ships inside, and every derived
+# feature archive are regenerable — pipeline_w/README.md documents the download
+# and the exact parser command. Keeps ~1.9 GB out of the repository.
+weibo_data/
