@@ -1,0 +1,13 @@
+{
+  "window_seconds": 3600,
+  "n_test_cascades": 6328,
+  "msle_ours": 1.9803564548492432,
+  "msle_cassubts": 1.9505555629730225,
+  "difference": 0.029800936579704285,
+  "ci95_low": -0.009951697755604982,
+  "ci95_high": 0.07499379627406597,
+  "paired_t_p": 0.17153310840313693,
+  "wilcoxon_p": 0.04470415184504333,
+  "cassubts_better_fraction": 0.5124841972187105,
+  "significant_at_05": false
+}
