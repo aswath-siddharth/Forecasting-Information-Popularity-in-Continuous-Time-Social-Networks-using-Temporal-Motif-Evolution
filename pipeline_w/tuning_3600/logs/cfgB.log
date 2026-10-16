@@ -1,0 +1,28 @@
+======================================================================
+ PIPELINE W: 60-MINUTE OBSERVATION ON THE DEEPHAWKES WEIBO BENCHMARK
+======================================================================
+• Device: cpu  (threads=4, bucketed_batches=True)
+• Cascades: train=29,530  val=6,328  test=6,328
+• Events/cascade: mean=61.7  max=994
+• Target = increment; mean log2(y+1) = 4.7811
+
+--- Training attention_gru (49,824 params) ---
+[attention_gru] epoch 001/060  train_MSLE=2.6875  val_MSLE=5.2237  lr=9.99e-04
+[attention_gru] epoch 002/060  train_MSLE=2.1521  val_MSLE=4.0467  lr=9.97e-04
+[attention_gru] epoch 003/060  train_MSLE=2.1205  val_MSLE=3.0391  lr=9.94e-04
+[attention_gru] epoch 004/060  train_MSLE=2.0782  val_MSLE=2.5211  lr=9.90e-04
+[attention_gru] epoch 005/060  train_MSLE=2.0520  val_MSLE=2.2833  lr=9.84e-04
+[attention_gru] epoch 006/060  train_MSLE=2.0430  val_MSLE=2.1673  lr=9.77e-04
+[attention_gru] epoch 007/060  train_MSLE=2.0392  val_MSLE=2.1104  lr=9.68e-04
+[attention_gru] epoch 008/060  train_MSLE=2.0214  val_MSLE=2.0783  lr=9.59e-04
+[attention_gru] epoch 009/060  train_MSLE=2.0074  val_MSLE=2.0592  lr=9.48e-04
+[attention_gru] epoch 010/060  train_MSLE=2.0009  val_MSLE=2.0521  lr=9.36e-04
+[attention_gru] epoch 011/060  train_MSLE=2.0055  val_MSLE=2.0432  lr=9.23e-04
+[attention_gru] epoch 012/060  train_MSLE=1.9839  val_MSLE=2.0347  lr=9.09e-04
+[attention_gru] epoch 013/060  train_MSLE=1.9749  val_MSLE=2.0336  lr=8.94e-04
+[attention_gru] epoch 014/060  train_MSLE=1.9801  val_MSLE=2.0401  lr=8.78e-04
+[attention_gru] epoch 015/060  train_MSLE=1.9566  val_MSLE=2.0381  lr=8.61e-04
+[attention_gru] epoch 016/060  train_MSLE=1.9558  val_MSLE=2.0442  lr=8.43e-04
+[attention_gru] epoch 017/060  train_MSLE=1.9393  val_MSLE=2.0504  lr=8.24e-04
+[attention_gru] epoch 018/060  train_MSLE=1.9263  val_MSLE=2.0591  lr=8.04e-04
+[attention_gru] epoch 019/060  train_MSLE=1.9251  val_MSLE=2.0556  lr=7.84e-04

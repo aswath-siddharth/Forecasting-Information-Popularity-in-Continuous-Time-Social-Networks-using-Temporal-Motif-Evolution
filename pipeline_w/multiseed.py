@@ -1,4 +1,7 @@
-"""Unattended multi-seed comparison of our model against CasSubTS (Weibo, 1 h).
+"""Unattended multi-seed run of our model against CasSubTS (Weibo, 1 h).
+
+Targets: the CasSubTS paper's published 1 h score (MSLE 1.987, R² 0.561, MAPE 0.299)
+and our own CasSubTS run on identical data (``outputs_cassubts_3600``, MSLE 1.951).
 
 1. Wait for the tuning runs (configs B and C, seed 42, ``--skip-test``) to finish, and
    run the extra tuning configs (D, E) the same way. B and C overfit after ~11 epochs
@@ -6,9 +9,12 @@
    regularisation on top.
 2. Pick the training recipe by **validation** MSLE among A (the original run) and B-E.
    The test split plays no part in this choice.
-3. Train the extra seeds: ours with the chosen recipe, CasSubTS with the *same* recipe
-   (scheduler, EMA, epoch budget, early stopping), so neither model gets better training.
-4. Score every run on the test split once and compare seed-averaged results.
+3. Train two more seeds of ours with the chosen recipe. The 3-model ensemble size is
+   fixed here, in advance: 3 x ~50K parameters stays below one CasSubTS (154K), so
+   the ensemble is a parameter-matched comparison. Its size is never tuned on test.
+4. Score every run once on the test split: each seed, the seed mean, and the
+   3-model ensemble, against both targets, with a paired test against our CasSubTS run.
+5. Optional robustness phase: CasSubTS seeds trained with the same recipe as ours.
 
 A failed job is logged and skipped; the comparison uses whatever runs completed and
 records how many there were.
@@ -119,120 +125,148 @@ def summarise(rows: dict[str, dict]) -> dict:
     return out
 
 
+def scored(pred: np.ndarray, target: np.ndarray) -> dict:
+    m = paper_metrics(pred, target)
+    m["MAE_count"] = float(np.mean(np.abs(np.clip(2.0 ** pred - 1, 0, None) - (2.0 ** target - 1))))
+    return m
+
+
+def paired(err_a: np.ndarray, err_b: np.ndarray) -> dict:
+    """Per-cascade paired comparison; negative difference favours ``a``."""
+    from scipy import stats
+    diff = err_a - err_b
+    rng = np.random.default_rng(0)
+    boot = np.array([diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(10000)])
+    lo, hi = np.percentile(boot, [2.5, 97.5])
+    t_p = float(stats.ttest_rel(err_a, err_b).pvalue)
+    return {"msle_a": float(err_a.mean()), "msle_b": float(err_b.mean()),
+            "difference": float(diff.mean()), "ci95_low": float(lo), "ci95_high": float(hi),
+            "paired_t_p": t_p, "wilcoxon_p": float(stats.wilcoxon(err_a, err_b).pvalue),
+            "a_better_fraction": float((diff < 0).mean()),
+            "significant_at_05": bool(t_p < 0.05 and lo * hi > 0)}
+
+
+PAPER = {"MSLE_log2": 1.987, "R2_log2": 0.561, "MAPE_log2": 0.299}
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--wait-pids", type=int, nargs="*", default=[])
     p.add_argument("--slots", type=int, default=2)
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
-    p.add_argument("--tune", nargs="*", default=["D", "E"], help="Extra tuning configs to run first.")
-    p.add_argument("--tune-threads", type=int, default=3)
+    p.add_argument("--configs", nargs="+", default=["A", "B", "C", "D", "E"])
+    p.add_argument("--skip-cassubts-seeds", action="store_true")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Exercise selection and scoring on existing checkpoints only; no training.")
     a = p.parse_args()
+    report_name = "dryrun_report.json" if a.dry_run else "multiseed_report.json"
+    if a.dry_run:
+        a.configs, a.seeds, a.skip_cassubts_seeds, a.wait_pids = ["A"], [42], True, []
     OUT.mkdir(parents=True, exist_ok=True)
     py = sys.executable
 
-    # 1. Extra tuning configs (seed 42, validation only), alongside the B/C runs already going.
-    run_jobs([(f"tune_cfg{c}", [py, "-m", "pipeline_w.train_weibo", "--data-dir", str(DATA),
-               "--output-dir", str(SEED42_DIR[c]), "--models", "attention_gru",
-               "--observation-window-note", str(WINDOW), "--threads", str(a.tune_threads),
-               "--seed", "42", "--skip-test", *RECIPES[c]["ours"]], TUNING / "logs" / f"cfg{c}.log")
-              for c in a.tune], a.slots)
+    # 1-2. Wait for every tuning run, then choose the recipe on validation only.
     wait_for_tuning(a.wait_pids)
-
-    # 2. Choose the recipe on validation only.
-    scores = {c: val_score(c) for c in ["A", "B", "C", *a.tune]}
+    scores = {c: val_score(c) for c in a.configs}
     scores = {c: s for c, s in scores.items() if s is not None}
     chosen = min(scores, key=scores.get)
     log("validation MSLE: " + ", ".join(f"{c}={s:.4f}" for c, s in scores.items()) + f"  -> chosen {chosen}")
-    (OUT / "selection.json").write_text(json.dumps(
+    (OUT / ("dryrun_selection.json" if a.dry_run else "selection.json")).write_text(json.dumps(
         {"val_MSLE_log2": scores, "chosen": chosen, "recipe": RECIPES[chosen],
          "rule": "lowest validation MSLE; test split not consulted"}, indent=2))
 
-    # 3. Extra seeds, interleaved so a partial comparison exists if the night runs short.
+    # 3. Two more seeds of ours.
     ours_dirs = {42: SEED42_DIR[chosen]}
-    cas_dirs = {}
     jobs = []
     for s in a.seeds:
-        d = OUT / f"cassubts_s{s}"
-        cas_dirs[s] = d
-        jobs.append((f"cassubts_s{s}", [py, "-m", "pipeline_w.train_cassubts", "--data-dir", str(GRAPHS),
-                     "--output-dir", str(d), "--observation-time", str(WINDOW), "--threads", str(a.threads),
-                     "--seed", str(s), *RECIPES[chosen]["cassubts"]], OUT / "logs" / f"cassubts_s{s}.log"))
-    for s in a.seeds:
-        if s in ours_dirs:
+        if s == 42:
             continue
-        d = OUT / f"ours_s{s}"
-        ours_dirs[s] = d
+        ours_dirs[s] = OUT / f"ours_s{s}"
         jobs.append((f"ours_s{s}", [py, "-m", "pipeline_w.train_weibo", "--data-dir", str(DATA),
-                     "--output-dir", str(d), "--models", "attention_gru",
+                     "--output-dir", str(ours_dirs[s]), "--models", "attention_gru",
                      "--observation-window-note", str(WINDOW), "--threads", str(a.threads),
                      "--seed", str(s), *RECIPES[chosen]["ours"]], OUT / "logs" / f"ours_s{s}.log"))
-    order = ["cassubts_s42", "ours_s43", "cassubts_s43", "ours_s44", "cassubts_s44"]
-    jobs.sort(key=lambda j: order.index(j[0]) if j[0] in order else len(order))
     ok = run_jobs(jobs, a.slots)
+    ours_dirs = {s: d for s, d in ours_dirs.items() if s == 42 or ok.get(f"ours_s{s}")}
+    if a.dry_run:
+        ours_dirs[43] = ours_dirs[42]          # exercises the ensemble path
 
-    # 4. Score every completed run on the test split, once.
-    log("scoring all runs on the test split")
-    preds, ref_ids, ref_t = {}, None, None
+    # Ensemble behaviour on validation first, so it is on record before test is read.
+    val_p = {s: predict_run(d, DATA, split="val") for s, d in ours_dirs.items()}
+    vt = next(iter(val_p.values()))[1]
+    val_single = {f"ours_s{s}": float(np.mean((v[0] - vt) ** 2)) for s, v in val_p.items()}
+    val_ens = float(np.mean((np.mean([v[0] for v in val_p.values()], axis=0) - vt) ** 2))
+    log("validation: " + ", ".join(f"{k}={v:.4f}" for k, v in val_single.items())
+        + f", ensemble({len(val_p)})={val_ens:.4f}")
 
-    def add(name, pred, target, ids):
-        nonlocal ref_ids, ref_t
-        if ref_ids is None:
-            ref_ids, ref_t = ids, target
-        if ids != ref_ids or not np.allclose(target, ref_t):
-            raise SystemExit(f"{name}: test cascades or targets do not match — refusing to compare")
-        preds[name] = pred
-
+    # 4. Test split, scored once.
+    log("scoring on the test split")
+    cas_pred, t, ids = cassubts_predictions(WINDOW, GRAPHS, Path(f"pipeline_w/outputs_cassubts_{WINDOW}"), 6)
+    test_p = {}
     for s, d in ours_dirs.items():
-        if s == 42 or ok.get(f"ours_s{s}"):
-            add(f"ours_s{s}", *predict_run(d, DATA, split="test"))
+        pr, tt, ii = predict_run(d, DATA, split="test")
+        if ii != ids or not np.allclose(tt, t):
+            raise SystemExit(f"ours_s{s}: test cascades or targets do not match CasSubTS — refusing to compare")
+        test_p[f"ours_s{s}"] = pr
+    ens = np.mean(list(test_p.values()), axis=0)
+
+    per_run = {k: scored(v, t) for k, v in test_p.items()}
+    per_run["ours_ensemble"] = scored(ens, t)
+    per_run["cassubts_our_run"] = scored(cas_pred, t)
+    for k, m in per_run.items():
+        log(f"  {k:<18} MSLE={m['MSLE_log2']:.4f}  R2={m['R2_log2']:.4f}  MAPE={m['MAPE_log2']:.4f}  MAE={m['MAE_count']:.2f}")
+
+    cas_err = (cas_pred - t) ** 2
+    result = {
+        "window_seconds": WINDOW, "n_test_cascades": int(len(t)),
+        "chosen_recipe": chosen, "val_selection": scores,
+        "validation": {"single": val_single, "ensemble": val_ens},
+        "test": per_run,
+        "ours_single_seed_summary": summarise({k: per_run[k] for k in test_p}),
+        "targets": {"cassubts_paper": PAPER, "cassubts_our_run": per_run["cassubts_our_run"]},
+        "ensemble_vs_cassubts_our_run": paired((ens - t) ** 2, cas_err),
+        "single_seed_mean_error_vs_cassubts_our_run": paired(
+            np.mean([(v - t) ** 2 for v in test_p.values()], axis=0), cas_err),
+        "params": {"ours_single": int(json.loads((ours_dirs[42] / "weibo_evaluation_report.json").read_text())
+                                      ["results"]["attention_gru"]["metrics"].get("n_params", 49824)),
+                   "cassubts": 153970},
+    }
+    result["params"]["ours_ensemble"] = result["params"]["ours_single"] * len(test_p)
+    pe = result["ensemble_vs_cassubts_our_run"]
+    log(f"ensemble vs our CasSubTS run: {pe['msle_a']:.4f} vs {pe['msle_b']:.4f}  diff {pe['difference']:+.4f} "
+        f"CI [{pe['ci95_low']:+.4f}, {pe['ci95_high']:+.4f}]  t p={pe['paired_t_p']:.4f}  Wilcoxon p={pe['wilcoxon_p']:.4g}")
+    (OUT / report_name).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    log(f"PRIMARY DONE -> {OUT / report_name}")
+
+    # 5. Optional robustness check: CasSubTS seeds under the same recipe as ours.
+    if a.skip_cassubts_seeds:
+        return
+    cas_jobs, cas_dirs = [], {}
+    for s in a.seeds:
+        cas_dirs[s] = OUT / f"cassubts_s{s}"
+        cas_jobs.append((f"cassubts_s{s}", [py, "-m", "pipeline_w.train_cassubts", "--data-dir", str(GRAPHS),
+                         "--output-dir", str(cas_dirs[s]), "--observation-time", str(WINDOW),
+                         "--threads", str(a.threads), "--seed", str(s), *RECIPES[chosen]["cassubts"]],
+                         OUT / "logs" / f"cassubts_s{s}.log"))
+    ok = run_jobs(cas_jobs, a.slots)
+    cas_runs = {}
     for s, d in cas_dirs.items():
         if ok.get(f"cassubts_s{s}"):
-            add(f"cassubts_s{s}", *cassubts_predictions(WINDOW, GRAPHS, d, 6))
-    add("cassubts_original", *cassubts_predictions(WINDOW, GRAPHS, Path(f"pipeline_w/outputs_cassubts_{WINDOW}"), 6))
-
-    t = ref_t
-    per_run = {}
-    for name, pr in preds.items():
-        m = paper_metrics(pr, t)
-        m["MAE_count"] = float(np.mean(np.abs(np.clip(2.0 ** pr - 1, 0, None) - (2.0 ** t - 1))))
-        per_run[name] = m
-        log(f"  {name:<20} MSLE={m['MSLE_log2']:.4f}  R2={m['R2_log2']:.4f}  MAPE={m['MAPE_log2']:.4f}")
-
-    ours = {k: v for k, v in per_run.items() if k.startswith("ours_")}
-    cas = {k: v for k, v in per_run.items() if k.startswith("cassubts_s")}
-    result = {"window_seconds": WINDOW, "chosen_recipe": chosen, "val_selection": scores,
-              "n_test_cascades": int(len(t)), "per_run": per_run,
-              "ours": summarise(ours), "cassubts_same_recipe": summarise(cas) if cas else None}
-
-    if cas:
-        from scipy import stats
-        err_o = np.mean([(preds[k] - t) ** 2 for k in ours], axis=0)
-        err_c = np.mean([(preds[k] - t) ** 2 for k in cas], axis=0)
-        diff = err_o - err_c                        # positive favours CasSubTS
-        rng = np.random.default_rng(0)
-        boot = np.array([diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(10000)])
-        lo, hi = np.percentile(boot, [2.5, 97.5])
-        seed_o = [v["MSLE_log2"] for v in ours.values()]
-        seed_c = [v["MSLE_log2"] for v in cas.values()]
-        result["paired_per_cascade_seed_averaged"] = {
-            "msle_ours": float(err_o.mean()), "msle_cassubts": float(err_c.mean()),
-            "difference": float(diff.mean()), "ci95_low": float(lo), "ci95_high": float(hi),
-            "paired_t_p": float(stats.ttest_rel(err_o, err_c).pvalue),
-            "wilcoxon_p": float(stats.wilcoxon(err_o, err_c).pvalue),
-            "ours_better_fraction": float((diff < 0).mean()),
-            "significant_at_05": bool(stats.ttest_rel(err_o, err_c).pvalue < 0.05 and lo * hi > 0),
+            pr, tt, ii = cassubts_predictions(WINDOW, GRAPHS, d, 6)
+            assert ii == ids and np.allclose(tt, t)
+            cas_runs[f"cassubts_s{s}"] = pr
+            log(f"  cassubts_s{s:<8} MSLE={np.mean((pr - t) ** 2):.4f}")
+    if cas_runs:
+        result["robustness_cassubts_same_recipe"] = {
+            "summary": summarise({k: scored(v, t) for k, v in cas_runs.items()}),
+            "ensemble": scored(np.mean(list(cas_runs.values()), axis=0), t),
+            "ours_mean_error_vs_cassubts_mean_error": paired(
+                np.mean([(v - t) ** 2 for v in test_p.values()], axis=0),
+                np.mean([(v - t) ** 2 for v in cas_runs.values()], axis=0)),
         }
-        if len(seed_o) > 1 and len(seed_c) > 1:
-            result["welch_t_over_seeds_p"] = float(stats.ttest_ind(seed_o, seed_c, equal_var=False).pvalue)
-        pc = result["paired_per_cascade_seed_averaged"]
-        log(f"ours {result['ours']['MSLE_log2']['mean']:.4f} ± {result['ours']['MSLE_log2']['std']:.4f}  vs  "
-            f"CasSubTS {result['cassubts_same_recipe']['MSLE_log2']['mean']:.4f} ± "
-            f"{result['cassubts_same_recipe']['MSLE_log2']['std']:.4f}  | diff {pc['difference']:+.4f} "
-            f"CI [{lo:+.4f}, {hi:+.4f}]  t p={pc['paired_t_p']:.4f}  Wilcoxon p={pc['wilcoxon_p']:.4g}")
-
-    (OUT / "multiseed_report.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    log(f"ALL DONE -> {OUT / 'multiseed_report.json'}")
+        (OUT / report_name).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    log(f"ALL DONE -> {OUT / report_name}")
 
 
 if __name__ == "__main__":
