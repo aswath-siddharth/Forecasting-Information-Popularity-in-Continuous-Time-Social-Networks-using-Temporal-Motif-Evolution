@@ -15,3 +15,11 @@
 [2026-10-17 03:03:24] PRIMARY DONE -> pipeline_w/multiseed_3600/multiseed_report.json
 [2026-10-17 03:03:24] started cassubts_s42  -> pipeline_w/multiseed_3600/logs/cassubts_s42.log
 [2026-10-17 03:03:24] started cassubts_s43  -> pipeline_w/multiseed_3600/logs/cassubts_s43.log
+[2026-10-17 03:39:55] finished cassubts_s43 after 0.61 h
+[2026-10-17 03:39:55] started cassubts_s44  -> pipeline_w/multiseed_3600/logs/cassubts_s44.log
+[2026-10-17 03:53:25] finished cassubts_s42 after 0.83 h
+[2026-10-17 04:13:26] finished cassubts_s44 after 0.56 h
+[2026-10-17 04:13:28]   cassubts_s42       MSLE=1.9796
+[2026-10-17 04:13:30]   cassubts_s43       MSLE=2.0149
+[2026-10-17 04:13:32]   cassubts_s44       MSLE=1.9647
+[2026-10-17 04:13:32] ALL DONE -> pipeline_w/multiseed_3600/multiseed_report.json

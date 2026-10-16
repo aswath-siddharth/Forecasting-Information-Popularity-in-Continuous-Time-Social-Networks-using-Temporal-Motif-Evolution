@@ -5,6 +5,10 @@ and structural information via subgraph sampling and multi-head attention for in
 cascade prediction*, Scientific Reports 15:6801 (2025),
 DOI [10.1038/s41598-025-91752-z](https://doi.org/10.1038/s41598-025-91752-z).
 
+> **Update (multi-seed):** the single-run numbers below were superseded by a 3-seed
+> comparison under an identical recipe — see [MULTISEED_RESULTS.md](MULTISEED_RESULTS.md).
+> Fresh CasSubTS seeds average 1.986; ours average 1.985, and our 3-model ensemble reaches 1.952.
+
 Published rows are copied verbatim from the paper and checked against the PDF.
 Rows marked **(our run)** were trained and tested in this repository.
 

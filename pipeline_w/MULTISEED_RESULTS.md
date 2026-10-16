@@ -78,25 +78,72 @@ not a controlled one.
 - A single seed of ours is, on average, slightly behind CasSubTS (seed-mean error +0.034,
   p = 0.096, CasSubTS better on 54% of cascades). Seed-to-seed spread for ours is ±0.019.
 
+## Robustness check — CasSubTS seeds under the same recipe
+
+The 1.951 target is one CasSubTS run, and our own seeds spread by ±0.019, so CasSubTS
+seeds 42–44 were trained fresh with exactly our chosen recipe (A: plateau schedule,
+60-epoch budget, early stop 8). This phase was planned before any test score was read.
+
+| Test MSLE ↓ | Ours | CasSubTS |
+| --- | --- | --- |
+| Seed 42 | 1.9804 | 1.9796 |
+| Seed 43 | 1.9683 | 2.0149 |
+| Seed 44 | 2.0050 | 1.9647 |
+| **Mean of 3 seeds** | **1.9845 ± 0.0187** | 1.9864 ± 0.0258 |
+| **3-model ensemble** | **1.9516** | 1.9730 |
+| Earlier single run (`outputs_cassubts_3600`) | — | 1.9506 |
+
+| Other metrics | Ours mean | CasSubTS mean | Ours ensemble | CasSubTS ensemble |
+| --- | --- | --- | --- | --- |
+| R² ↑ | 0.6242 | 0.6238 | **0.6304** | 0.6264 |
+| MAPE ↓ | 0.2315 | **0.2308** | **0.2292** | 0.2299 |
+| MAE ↓ | 77.23 | **75.97** | **75.42** | 75.66 |
+| Parameters | **49,824** | 153,970 | **149,472** | 461,910 |
+
+| Paired test, per cascade | Seed-mean errors | Ensemble vs ensemble |
+| --- | --- | --- |
+| MSLE difference (ours − CasSubTS) | −0.0019 | **−0.0214** |
+| 95% bootstrap CI | [−0.0401, +0.0395] | [−0.0599, +0.0202] |
+| Paired t-test p | 0.93 | 0.29 |
+| Ours better on | 45.4% of cascades | 50.9% of cascades |
+| Wilcoxon p | 5.1 × 10⁻⁵ | 0.017 |
+
+(`multiseed_report.json`, `ensemble_vs_ensemble.json`; the ensemble-vs-ensemble test was
+added after the run as an analysis, not used to choose anything.)
+
+**What this shows**
+
+- **1.951 is not typical of CasSubTS.** The closest fresh CasSubTS seed (1.965) is 0.014 worse, and
+  even CasSubTS's own 3-model ensemble (1.973) does not reach it. That run was the one
+  interrupted at epoch 12 and warm-started with a fresh learning-rate schedule (42 epochs in
+  all); whether that restart helped or it was simply a good draw, it is not what the standard
+  recipe produces.
+- **Like-for-like, ours is level or ahead on MSLE.** Single models: 1.9845 vs 1.9864 (tie,
+  p = 0.93) with 3.1× fewer parameters. Ensembles: 1.952 vs 1.973, 1.1% lower, not significant
+  (p = 0.29).
+- **Single CasSubTS models are better on the typical cascade.** Per seed, CasSubTS has lower
+  error on 54.6% of cascades (Wilcoxon p = 5 × 10⁻⁵) and better MAE and MAPE; ours draws level
+  on the mean MSLE through fewer large tail errors. Ensembling reverses this: our ensemble is
+  better on 50.9% of cascades (p = 0.017) and on every metric.
+
 ## What may be claimed
 
 > ✅ On the DeepHawkes Weibo benchmark at 1 h, our model outperforms the published CasSubTS
-> results on MSLE, R² and MAPE (ensemble 1.952 / 0.630 / 0.229 vs 1.987 / 0.561 / 0.299),
-> noting the preprocessing differences.
+> results on MSLE, R² and MAPE (ensemble 1.952 / 0.630 / 0.229; single-model mean
+> 1.985 / 0.624 / 0.232; paper 1.987 / 0.561 / 0.299), noting the preprocessing differences.
 
-> ✅ Under identical splits, labels and loss, a parameter-matched 3-model ensemble of ours
-> (149K parameters) matches CasSubTS (154K) on MSLE (1.952 vs 1.951, p = 0.96), is better on
-> MAPE and MAE, and has lower error on a statistically significant majority of cascades
-> (52.7%, Wilcoxon p < 0.001).
+> ✅ Under identical splits, labels, loss and training recipe, averaged over 3 seeds, our
+> model matches CasSubTS on MSLE (1.985 vs 1.986, p = 0.93) with 3.1× fewer parameters, and a
+> 3-model ensemble of ours (149K parameters, still below one CasSubTS) achieves 1.952 — lower
+> than every fresh CasSubTS seed (1.965–2.015) and than a 3-model CasSubTS ensemble (1.973),
+> though the ensemble gap is not statistically significant (p = 0.29).
 
-> ❌ "We beat CasSubTS on MSLE in our controlled run." 1.9516 > 1.9506; it is a tie.
+> ✅ Against the single best CasSubTS run we obtained (1.951), the parameter-matched ensemble
+> ties on MSLE (+0.001, p = 0.96) and is better on MAPE and MAE.
 
-> ❌ Reporting seed 43 alone (1.968) as "our result". Seeds were not chosen on test, and the
-> honest single-model figure is the mean, 1.985 ± 0.019.
+> ❌ "We significantly outperform CasSubTS." No comparison here reaches p < 0.05 on MSLE.
 
-## Robustness check — CasSubTS seeds (running)
+> ❌ "Our model beats 1.951." It ties it (1.9516).
 
-The 1.951 target is a single CasSubTS run, and our own seeds spread by ±0.019. CasSubTS
-seeds 42–44 are being trained with the chosen recipe (A: plateau schedule, 60-epoch budget,
-early stop 8) to show where 1.951 sits within CasSubTS's own seed spread. Results are added
-here when they finish.
+> ❌ Reporting seed 43 alone (1.968) as "our result", or CasSubTS seed 43 alone (2.015) as
+> theirs. The honest single-model figures are the means.

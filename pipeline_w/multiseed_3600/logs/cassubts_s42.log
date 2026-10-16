@@ -1,0 +1,54 @@
+======================================================================
+ CasSubTS (reimplementation) — Wang et al., Sci Rep 15:6801 (2025)
+======================================================================
+• cascades  train=29,530 val=6,328 test=6,328
+• window=3600s  subgraphs=6  params=153,970
+• mean log2(y+1)=4.7811
+[cassubts] epoch 001/060  train_MSLE=2.8577  val_MSLE=2.7323  lr=2.00e-03
+[cassubts] epoch 002/060  train_MSLE=2.2502  val_MSLE=2.3208  lr=2.00e-03
+[cassubts] epoch 003/060  train_MSLE=2.2278  val_MSLE=2.2511  lr=2.00e-03
+[cassubts] epoch 004/060  train_MSLE=2.1833  val_MSLE=2.2024  lr=2.00e-03
+[cassubts] epoch 005/060  train_MSLE=2.1481  val_MSLE=2.1893  lr=2.00e-03
+[cassubts] epoch 006/060  train_MSLE=2.1244  val_MSLE=2.2462  lr=2.00e-03
+[cassubts] epoch 007/060  train_MSLE=2.1358  val_MSLE=2.2160  lr=2.00e-03
+[cassubts] epoch 008/060  train_MSLE=2.1284  val_MSLE=2.1861  lr=2.00e-03
+[cassubts] epoch 009/060  train_MSLE=2.1022  val_MSLE=2.1678  lr=2.00e-03
+[cassubts] epoch 010/060  train_MSLE=2.0922  val_MSLE=2.2534  lr=2.00e-03
+[cassubts] epoch 011/060  train_MSLE=2.0859  val_MSLE=2.1912  lr=2.00e-03
+[cassubts] epoch 012/060  train_MSLE=2.1000  val_MSLE=2.1312  lr=2.00e-03
+[cassubts] epoch 013/060  train_MSLE=2.0853  val_MSLE=2.2511  lr=2.00e-03
+[cassubts] epoch 014/060  train_MSLE=2.0708  val_MSLE=2.1715  lr=2.00e-03
+[cassubts] epoch 015/060  train_MSLE=2.0662  val_MSLE=2.2279  lr=2.00e-03
+[cassubts] epoch 016/060  train_MSLE=2.0588  val_MSLE=2.1604  lr=1.00e-03
+[cassubts] epoch 017/060  train_MSLE=2.0235  val_MSLE=2.1183  lr=1.00e-03
+[cassubts] epoch 018/060  train_MSLE=2.0184  val_MSLE=2.1751  lr=1.00e-03
+[cassubts] epoch 019/060  train_MSLE=2.0321  val_MSLE=2.1277  lr=1.00e-03
+[cassubts] epoch 020/060  train_MSLE=2.0148  val_MSLE=2.1469  lr=1.00e-03
+[cassubts] epoch 021/060  train_MSLE=2.0225  val_MSLE=2.1187  lr=5.00e-04
+[cassubts] epoch 022/060  train_MSLE=1.9890  val_MSLE=2.1002  lr=5.00e-04
+[cassubts] epoch 023/060  train_MSLE=1.9932  val_MSLE=2.1316  lr=5.00e-04
+[cassubts] epoch 024/060  train_MSLE=1.9841  val_MSLE=2.0943  lr=5.00e-04
+[cassubts] epoch 025/060  train_MSLE=1.9880  val_MSLE=2.0940  lr=5.00e-04
+[cassubts] epoch 026/060  train_MSLE=1.9844  val_MSLE=2.0893  lr=5.00e-04
+[cassubts] epoch 027/060  train_MSLE=1.9867  val_MSLE=2.0962  lr=5.00e-04
+[cassubts] epoch 028/060  train_MSLE=1.9815  val_MSLE=2.1049  lr=5.00e-04
+[cassubts] epoch 029/060  train_MSLE=1.9811  val_MSLE=2.1379  lr=5.00e-04
+[cassubts] epoch 030/060  train_MSLE=1.9845  val_MSLE=2.1250  lr=2.50e-04
+[cassubts] epoch 031/060  train_MSLE=1.9690  val_MSLE=2.1008  lr=2.50e-04
+[cassubts] epoch 032/060  train_MSLE=1.9638  val_MSLE=2.1010  lr=2.50e-04
+[cassubts] epoch 033/060  train_MSLE=1.9662  val_MSLE=2.0918  lr=2.50e-04
+[cassubts] epoch 034/060  train_MSLE=1.9713  val_MSLE=2.1030  lr=1.25e-04
+[cassubts] early stop at epoch 34
+
+======================================================================
+ CasSubTS TEST RESULTS (3600s observation)
+======================================================================
+  MSLE_log2      1.9796
+  MSLE_ln        0.9511
+  MAE_count      75.4335
+  RMSE_count     659.5098
+  MedAE_count    11.7505
+  R2_log2        0.6251
+  PCC_log2       0.7913
+
+• Report -> pipeline_w/multiseed_3600/cassubts_s42/cassubts_evaluation_report.json
