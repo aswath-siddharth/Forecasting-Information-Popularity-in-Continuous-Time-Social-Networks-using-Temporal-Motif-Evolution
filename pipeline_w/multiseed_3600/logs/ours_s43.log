@@ -1,0 +1,48 @@
+======================================================================
+ PIPELINE W: 60-MINUTE OBSERVATION ON THE DEEPHAWKES WEIBO BENCHMARK
+======================================================================
+• Device: cpu  (threads=4, bucketed_batches=True)
+• Cascades: train=29,530  val=6,328  test=6,328
+• Events/cascade: mean=61.7  max=994
+• Target = increment; mean log2(y+1) = 4.7811
+
+--- Training attention_gru (49,824 params) ---
+[attention_gru] epoch 001/060  train_MSLE=2.6161  val_MSLE=2.2818  lr=1.00e-03
+[attention_gru] epoch 002/060  train_MSLE=2.1571  val_MSLE=2.2047  lr=1.00e-03
+[attention_gru] epoch 003/060  train_MSLE=2.1073  val_MSLE=2.1102  lr=1.00e-03
+[attention_gru] epoch 004/060  train_MSLE=2.0844  val_MSLE=2.2580  lr=1.00e-03
+[attention_gru] epoch 005/060  train_MSLE=2.0726  val_MSLE=2.0890  lr=1.00e-03
+[attention_gru] epoch 006/060  train_MSLE=2.0319  val_MSLE=2.0927  lr=1.00e-03
+[attention_gru] epoch 007/060  train_MSLE=2.0294  val_MSLE=2.1067  lr=1.00e-03
+[attention_gru] epoch 008/060  train_MSLE=2.0146  val_MSLE=2.0833  lr=1.00e-03
+[attention_gru] epoch 009/060  train_MSLE=2.0097  val_MSLE=2.0583  lr=1.00e-03
+[attention_gru] epoch 010/060  train_MSLE=2.0045  val_MSLE=2.0656  lr=1.00e-03
+[attention_gru] epoch 011/060  train_MSLE=1.9892  val_MSLE=2.1193  lr=1.00e-03
+[attention_gru] epoch 012/060  train_MSLE=1.9769  val_MSLE=2.0295  lr=1.00e-03
+[attention_gru] epoch 013/060  train_MSLE=1.9737  val_MSLE=2.0506  lr=1.00e-03
+[attention_gru] epoch 014/060  train_MSLE=1.9751  val_MSLE=2.0567  lr=1.00e-03
+[attention_gru] epoch 015/060  train_MSLE=1.9502  val_MSLE=2.1651  lr=1.00e-03
+[attention_gru] epoch 016/060  train_MSLE=1.9684  val_MSLE=2.0280  lr=1.00e-03
+[attention_gru] epoch 017/060  train_MSLE=1.9559  val_MSLE=1.9947  lr=1.00e-03
+[attention_gru] epoch 018/060  train_MSLE=1.9441  val_MSLE=2.0596  lr=1.00e-03
+[attention_gru] epoch 019/060  train_MSLE=1.9451  val_MSLE=2.0240  lr=1.00e-03
+[attention_gru] epoch 020/060  train_MSLE=1.9401  val_MSLE=2.0237  lr=1.00e-03
+[attention_gru] epoch 021/060  train_MSLE=1.9217  val_MSLE=2.0621  lr=5.00e-04
+[attention_gru] epoch 022/060  train_MSLE=1.8850  val_MSLE=2.0358  lr=5.00e-04
+[attention_gru] epoch 023/060  train_MSLE=1.8730  val_MSLE=2.0488  lr=5.00e-04
+[attention_gru] epoch 024/060  train_MSLE=1.8656  val_MSLE=2.0798  lr=5.00e-04
+[attention_gru] epoch 025/060  train_MSLE=1.8602  val_MSLE=2.0444  lr=2.50e-04
+[attention_gru] early stop at epoch 25
+
+======================================================================
+ TEST-SET RESULTS (3600s observation -> 24-hour popularity)
+======================================================================
+model               MSLE(log2)         MAE        RMSE       R2     PCC
+-----------------------------------------------------------------------
+mean_baseline           5.2825      105.32      688.01  -0.0003     nan
+attention_gru           1.9683       75.79      662.57   0.6273  0.7923
+
+Top-5% classification (our adaptation), cutoff=405 retweets, positives=4.73%
+  Accuracy=0.9581  Precision=0.5567  Recall=0.5585  F1=0.5576  ROC-AUC=0.8758  PR-AUC=0.5768
+
+• Report written to pipeline_w/multiseed_3600/ours_s43/weibo_evaluation_report.json

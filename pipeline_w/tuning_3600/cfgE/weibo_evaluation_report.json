@@ -1,0 +1,48 @@
+{
+  "setting": {
+    "dataset": "Sina Weibo (released with DeepHawkes, Cao et al., CIKM 2017)",
+    "observation_window_seconds": 3600,
+    "prediction_horizon_hours": 24,
+    "target": "increment retweets (DeepHawkes target = increment after the window)",
+    "loss": "MSE on log2(y+1), i.e. MSLE in log2 units",
+    "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
+    "feature_dim": 15,
+    "note": "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. This run uses the 1-hour window, directly comparable in setting.",
+    "training": {
+      "seed": 42,
+      "scheduler": "cosine",
+      "ema_decay": 0.999,
+      "early_stop": 8,
+      "epochs": 20,
+      "lr": 0.001,
+      "hidden_size": 64,
+      "num_layers": 1,
+      "side_features": true,
+      "evaluated_on": "val"
+    }
+  },
+  "data": {
+    "train_cascades": 29530,
+    "val_cascades": 6328,
+    "test_cascades": 6328,
+    "mean_events_per_cascade": 61.73000338638673
+  },
+  "results": {
+    "attention_gru": {
+      "metrics": {
+        "MSLE_log2": 2.1437855962936223,
+        "MSLE_ln": 1.0299882509336993,
+        "RMSLE_log2": 1.4641672023008925,
+        "MAE_count": 83.27350281246558,
+        "RMSE_count": 470.3193174341996,
+        "MedAE_count": 11.447365926614573,
+        "R2_log2": 0.6207623173072717,
+        "PCC_log2": 0.8025755790172282,
+        "n_samples": 6328,
+        "evaluated_on": "val",
+        "n_params": 50144,
+        "best_val_MSLE_log2": 2.146360590000345
+      }
+    }
+  }
+}

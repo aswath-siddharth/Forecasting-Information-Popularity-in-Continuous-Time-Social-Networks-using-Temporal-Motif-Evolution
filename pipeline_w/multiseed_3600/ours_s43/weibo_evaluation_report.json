@@ -1,0 +1,73 @@
+{
+  "setting": {
+    "dataset": "Sina Weibo (released with DeepHawkes, Cao et al., CIKM 2017)",
+    "observation_window_seconds": 3600,
+    "prediction_horizon_hours": 24,
+    "target": "increment retweets (DeepHawkes target = increment after the window)",
+    "loss": "MSE on log2(y+1), i.e. MSLE in log2 units",
+    "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
+    "feature_dim": 15,
+    "note": "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. This run uses the 1-hour window, directly comparable in setting.",
+    "training": {
+      "seed": 43,
+      "scheduler": "plateau",
+      "ema_decay": 0.0,
+      "early_stop": 8,
+      "epochs": 60,
+      "lr": 0.001,
+      "hidden_size": 64,
+      "num_layers": 1,
+      "side_features": false,
+      "evaluated_on": "test"
+    }
+  },
+  "data": {
+    "train_cascades": 29530,
+    "val_cascades": 6328,
+    "test_cascades": 6328,
+    "mean_events_per_cascade": 61.73000338638673
+  },
+  "results": {
+    "mean_baseline": {
+      "metrics": {
+        "MSLE_log2": 5.282547290831118,
+        "MSLE_ln": 2.5380157670452403,
+        "RMSLE_log2": 2.2983792748002054,
+        "MAE_count": 105.31847164602894,
+        "RMSE_count": 688.0102416188231,
+        "MedAE_count": 21.49562763528598,
+        "R2_log2": -0.000317448366358164,
+        "PCC_log2": NaN,
+        "n_samples": 6328
+      }
+    },
+    "attention_gru": {
+      "metrics": {
+        "MSLE_log2": 1.9682616043063885,
+        "MSLE_ln": 0.9456572199684786,
+        "RMSLE_log2": 1.402947470259093,
+        "MAE_count": 75.79289019536724,
+        "RMSE_count": 662.5658581729837,
+        "MedAE_count": 10.844750392255136,
+        "R2_log2": 0.6272846591973611,
+        "PCC_log2": 0.792313917359413,
+        "n_samples": 6328,
+        "evaluated_on": "test",
+        "n_params": 49824,
+        "best_val_MSLE_log2": 1.9947405945171008
+      },
+      "classification": {
+        "cutoff_count": 405.0,
+        "decision_threshold_log2": 8.104609672929772,
+        "val_f1_at_threshold": 0.6335227272727273,
+        "positive_rate": 0.04725031605562579,
+        "accuracy": 0.9581226295828066,
+        "precision": 0.5566666666666666,
+        "recall": 0.5585284280936454,
+        "f1": 0.5575959933222037,
+        "roc_auc": 0.8758475617569705,
+        "pr_auc": 0.5768162300476607
+      }
+    }
+  }
+}

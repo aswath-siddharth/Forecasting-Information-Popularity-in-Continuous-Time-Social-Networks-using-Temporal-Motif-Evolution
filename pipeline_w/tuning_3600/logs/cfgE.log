@@ -1,0 +1,35 @@
+======================================================================
+ PIPELINE W: 60-MINUTE OBSERVATION ON THE DEEPHAWKES WEIBO BENCHMARK
+======================================================================
+• Device: cpu  (threads=3, bucketed_batches=True)
+• Cascades: train=29,530  val=6,328  test=6,328
+• Events/cascade: mean=61.7  max=994
+• Target = increment; mean log2(y+1) = 4.7811
+
+--- Training attention_gru (50,144 params) ---
+[attention_gru] epoch 001/020  train_MSLE=2.6666  val_MSLE=4.9778  lr=9.94e-04
+[attention_gru] epoch 002/020  train_MSLE=2.1577  val_MSLE=3.9079  lr=9.77e-04
+[attention_gru] epoch 003/020  train_MSLE=2.1075  val_MSLE=3.0410  lr=9.48e-04
+[attention_gru] epoch 004/020  train_MSLE=2.0773  val_MSLE=2.5642  lr=9.09e-04
+[attention_gru] epoch 005/020  train_MSLE=2.0665  val_MSLE=2.3367  lr=8.61e-04
+[attention_gru] epoch 006/020  train_MSLE=2.0377  val_MSLE=2.2312  lr=8.04e-04
+[attention_gru] epoch 007/020  train_MSLE=2.0173  val_MSLE=2.1680  lr=7.41e-04
+[attention_gru] epoch 008/020  train_MSLE=2.0073  val_MSLE=2.1464  lr=6.72e-04
+[attention_gru] epoch 009/020  train_MSLE=1.9791  val_MSLE=2.1467  lr=5.99e-04
+[attention_gru] epoch 010/020  train_MSLE=1.9770  val_MSLE=2.1664  lr=5.25e-04
+[attention_gru] epoch 011/020  train_MSLE=1.9662  val_MSLE=2.1769  lr=4.51e-04
+[attention_gru] epoch 012/020  train_MSLE=1.9445  val_MSLE=2.1880  lr=3.78e-04
+[attention_gru] epoch 013/020  train_MSLE=1.9337  val_MSLE=2.2008  lr=3.09e-04
+[attention_gru] epoch 014/020  train_MSLE=1.9270  val_MSLE=2.2171  lr=2.46e-04
+[attention_gru] epoch 015/020  train_MSLE=1.9143  val_MSLE=2.2343  lr=1.89e-04
+[attention_gru] epoch 016/020  train_MSLE=1.9000  val_MSLE=2.2528  lr=1.41e-04
+[attention_gru] early stop at epoch 16
+
+======================================================================
+ VALIDATION (tuning mode) RESULTS (3600s observation -> 24-hour popularity)
+======================================================================
+model               MSLE(log2)         MAE        RMSE       R2     PCC
+-----------------------------------------------------------------------
+attention_gru           2.1438       83.27      470.32   0.6208  0.8026
+
+• Report written to pipeline_w/tuning_3600/cfgE/weibo_evaluation_report.json

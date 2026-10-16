@@ -1,0 +1,23 @@
+{
+  "val_MSLE_log2": {
+    "A": 2.0047101974487305,
+    "D": 2.0386837211791202,
+    "E": 2.1437855962936223
+  },
+  "chosen": "A",
+  "recipe": {
+    "ours": [
+      "--epochs",
+      "60",
+      "--early-stop",
+      "8"
+    ],
+    "cassubts": [
+      "--epochs",
+      "60",
+      "--early-stop",
+      "8"
+    ]
+  },
+  "rule": "lowest validation MSLE; test split not consulted"
+}

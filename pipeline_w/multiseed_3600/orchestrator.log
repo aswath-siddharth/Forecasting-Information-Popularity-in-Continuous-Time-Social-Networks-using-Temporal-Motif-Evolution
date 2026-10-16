@@ -1,0 +1,17 @@
+[2026-10-17 01:55:54] tuning processes have exited
+[2026-10-17 01:55:58] validation MSLE: A=2.0047, D=2.0387, E=2.1438  -> chosen A
+[2026-10-17 01:55:58] started ours_s43  -> pipeline_w/multiseed_3600/logs/ours_s43.log
+[2026-10-17 01:55:58] started ours_s44  -> pipeline_w/multiseed_3600/logs/ours_s44.log
+[2026-10-17 02:56:29] finished ours_s44 after 1.01 h
+[2026-10-17 03:02:59] finished ours_s43 after 1.12 h
+[2026-10-17 03:03:09] validation: ours_s42=2.0047, ours_s43=1.9933, ours_s44=2.0592, ensemble(3)=1.9824
+[2026-10-17 03:03:09] scoring on the test split
+[2026-10-17 03:03:23]   ours_s42           MSLE=1.9804  R2=0.6250  MAPE=0.2340  MAE=77.78
+[2026-10-17 03:03:23]   ours_s43           MSLE=1.9683  R2=0.6273  MAPE=0.2282  MAE=75.79
+[2026-10-17 03:03:23]   ours_s44           MSLE=2.0050  R2=0.6203  MAPE=0.2323  MAE=78.12
+[2026-10-17 03:03:23]   ours_ensemble      MSLE=1.9516  R2=0.6304  MAPE=0.2292  MAE=75.42
+[2026-10-17 03:03:23]   cassubts_our_run   MSLE=1.9506  R2=0.6306  MAPE=0.2324  MAE=75.58
+[2026-10-17 03:03:24] ensemble vs our CasSubTS run: 1.9516 vs 1.9506  diff +0.0010 CI [-0.0366, +0.0424]  t p=0.9599  Wilcoxon p=2.234e-05
+[2026-10-17 03:03:24] PRIMARY DONE -> pipeline_w/multiseed_3600/multiseed_report.json
+[2026-10-17 03:03:24] started cassubts_s42  -> pipeline_w/multiseed_3600/logs/cassubts_s42.log
+[2026-10-17 03:03:24] started cassubts_s43  -> pipeline_w/multiseed_3600/logs/cassubts_s43.log
