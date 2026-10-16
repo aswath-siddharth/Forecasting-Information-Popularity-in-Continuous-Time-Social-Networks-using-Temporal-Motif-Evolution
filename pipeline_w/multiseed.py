@@ -1,7 +1,10 @@
 """Unattended multi-seed comparison of our model against CasSubTS (Weibo, 1 h).
 
-1. Wait for the tuning runs (configs B and C, seed 42, ``--skip-test``) to finish.
-2. Pick the training recipe by **validation** MSLE among A (the original run), B and C.
+1. Wait for the tuning runs (configs B and C, seed 42, ``--skip-test``) to finish, and
+   run the extra tuning configs (D, E) the same way. B and C overfit after ~11 epochs
+   under a 60-epoch cosine schedule, so D anneals over 20 epochs and E adds stronger
+   regularisation on top.
+2. Pick the training recipe by **validation** MSLE among A (the original run) and B-E.
    The test split plays no part in this choice.
 3. Train the extra seeds: ours with the chosen recipe, CasSubTS with the *same* recipe
    (scheduler, EMA, epoch budget, early stopping), so neither model gets better training.
@@ -35,16 +38,21 @@ GRAPHS = Path(f"weibo_data/cassubts_{WINDOW}")
 TUNING = Path(f"pipeline_w/tuning_{WINDOW}")
 OUT = Path(f"pipeline_w/multiseed_{WINDOW}")
 
+# Optimiser schedule, EMA, epoch budget and early stopping are always matched between the
+# two models. Model-specific regularisation (dropout, weight decay) stays at each model's
+# own setting; E's stronger regularisation applies to ours only and is disclosed as such.
+_COSINE60 = ["--scheduler", "cosine", "--ema-decay", "0.999", "--epochs", "60", "--early-stop", "15"]
+_COSINE20 = ["--scheduler", "cosine", "--ema-decay", "0.999", "--epochs", "20", "--early-stop", "8"]
 RECIPES = {
-    "A": {"ours": ["--early-stop", "8"], "cassubts": ["--epochs", "60", "--early-stop", "8"]},
-    "B": {"ours": ["--scheduler", "cosine", "--ema-decay", "0.999", "--early-stop", "15"],
-          "cassubts": ["--scheduler", "cosine", "--ema-decay", "0.999", "--epochs", "60",
-                       "--early-stop", "15"]},
+    "A": {"ours": ["--epochs", "60", "--early-stop", "8"], "cassubts": ["--epochs", "60", "--early-stop", "8"]},
+    "B": {"ours": _COSINE60, "cassubts": _COSINE60},
+    "C": {"ours": _COSINE60 + ["--side-features"], "cassubts": _COSINE60},
+    "D": {"ours": _COSINE20 + ["--side-features"], "cassubts": _COSINE20},
+    "E": {"ours": _COSINE20 + ["--side-features", "--dropout", "0.5", "--weight-decay", "1e-3"],
+          "cassubts": _COSINE20},
 }
-RECIPES["C"] = {"ours": RECIPES["B"]["ours"] + ["--side-features"],
-                "cassubts": RECIPES["B"]["cassubts"]}
 SEED42_DIR = {"A": Path(f"pipeline_w/outputs_{WINDOW}"),
-              "B": TUNING / "cfgB", "C": TUNING / "cfgC"}
+              **{c: TUNING / f"cfg{c}" for c in "BCDE"}}
 
 
 def log(msg: str) -> None:
@@ -117,12 +125,22 @@ def main() -> None:
     p.add_argument("--slots", type=int, default=2)
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
+    p.add_argument("--tune", nargs="*", default=["D", "E"], help="Extra tuning configs to run first.")
+    p.add_argument("--tune-threads", type=int, default=3)
     a = p.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    py = sys.executable
 
-    # 1-2. Wait for tuning, then choose the recipe on validation only.
+    # 1. Extra tuning configs (seed 42, validation only), alongside the B/C runs already going.
+    run_jobs([(f"tune_cfg{c}", [py, "-m", "pipeline_w.train_weibo", "--data-dir", str(DATA),
+               "--output-dir", str(SEED42_DIR[c]), "--models", "attention_gru",
+               "--observation-window-note", str(WINDOW), "--threads", str(a.tune_threads),
+               "--seed", "42", "--skip-test", *RECIPES[c]["ours"]], TUNING / "logs" / f"cfg{c}.log")
+              for c in a.tune], a.slots)
     wait_for_tuning(a.wait_pids)
-    scores = {c: val_score(c) for c in ("A", "B", "C")}
+
+    # 2. Choose the recipe on validation only.
+    scores = {c: val_score(c) for c in ["A", "B", "C", *a.tune]}
     scores = {c: s for c, s in scores.items() if s is not None}
     chosen = min(scores, key=scores.get)
     log("validation MSLE: " + ", ".join(f"{c}={s:.4f}" for c, s in scores.items()) + f"  -> chosen {chosen}")
@@ -130,8 +148,7 @@ def main() -> None:
         {"val_MSLE_log2": scores, "chosen": chosen, "recipe": RECIPES[chosen],
          "rule": "lowest validation MSLE; test split not consulted"}, indent=2))
 
-    # 3. Extra seeds. CasSubTS jobs are queued first because they are the slowest.
-    py = sys.executable
+    # 3. Extra seeds, interleaved so a partial comparison exists if the night runs short.
     ours_dirs = {42: SEED42_DIR[chosen]}
     cas_dirs = {}
     jobs = []
@@ -147,10 +164,9 @@ def main() -> None:
         d = OUT / f"ours_s{s}"
         ours_dirs[s] = d
         jobs.append((f"ours_s{s}", [py, "-m", "pipeline_w.train_weibo", "--data-dir", str(DATA),
-                     "--output-dir", str(d), "--models", "attention_gru", "--epochs", "60",
+                     "--output-dir", str(d), "--models", "attention_gru",
                      "--observation-window-note", str(WINDOW), "--threads", str(a.threads),
                      "--seed", str(s), *RECIPES[chosen]["ours"]], OUT / "logs" / f"ours_s{s}.log"))
-    # Interleave so a meaningful partial comparison exists if the night runs short.
     order = ["cassubts_s42", "ours_s43", "cassubts_s43", "ours_s44", "cassubts_s44"]
     jobs.sort(key=lambda j: order.index(j[0]) if j[0] in order else len(order))
     ok = run_jobs(jobs, a.slots)
