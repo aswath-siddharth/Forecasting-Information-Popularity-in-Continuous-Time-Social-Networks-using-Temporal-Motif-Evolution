@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 from torch.utils.data import DataLoader, Dataset
 
 from .cassubts_model import CasSubTS
@@ -81,7 +82,7 @@ def to_device(b: dict, dev: torch.device) -> dict:
     }
 
 
-def run_epoch(model, loader, crit, dev, opt=None) -> float:
+def run_epoch(model, loader, crit, dev, opt=None, ema=None) -> float:
     train = opt is not None
     model.train(train)
     tot, nb = 0.0, 0
@@ -94,6 +95,8 @@ def run_epoch(model, loader, crit, dev, opt=None) -> float:
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt.step()
+                if ema is not None:
+                    ema.update_parameters(model)
         tot += float(loss.item()); nb += 1
     return tot / max(nb, 1)
 
@@ -127,6 +130,10 @@ def main() -> None:
     p.add_argument("--weight-decay", type=float, default=1e-4) # eq 28 L_R
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
+    # Same training-recipe options as train_weibo.py, so both models can be given
+    # identical treatment; the defaults reproduce the original run.
+    p.add_argument("--scheduler", choices=["plateau", "cosine"], default="plateau")
+    p.add_argument("--ema-decay", type=float, default=0.0)
     p.add_argument("--init-from", default=None,
                    help="Warm-start weights from a checkpoint (optimizer state is NOT restored, "
                         "so the LR schedule restarts; recorded in the report when used).")
@@ -162,19 +169,27 @@ def main() -> None:
 
     crit = nn.MSELoss()
     opt = torch.optim.Adam(model.parameters(), lr=a.lr, weight_decay=a.weight_decay)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", patience=3, factor=0.5)
+    if a.scheduler == "cosine":
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs, eta_min=a.lr * 0.05)
+    else:
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", patience=3, factor=0.5)
+    ema = AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(a.ema_decay)) if a.ema_decay > 0 else None
+    eval_model = ema.module if ema is not None else model
 
     best, stale, hist = float("inf"), 0, []
     ckpt = out / "best_cassubts.pt"
     for ep in range(1, a.epochs + 1):
-        tr = run_epoch(model, dl["train"], crit, dev, opt)
-        va = run_epoch(model, dl["val"], crit, dev)
-        sched.step(va)
+        tr = run_epoch(model, dl["train"], crit, dev, opt, ema)
+        va = run_epoch(eval_model, dl["val"], crit, dev)
+        if a.scheduler == "cosine":
+            sched.step()
+        else:
+            sched.step(va)
         hist.append({"epoch": ep, "train_msle": tr, "val_msle": va, "lr": opt.param_groups[0]["lr"]})
         print(f"[cassubts] epoch {ep:03d}/{a.epochs:03d}  train_MSLE={tr:.4f}  val_MSLE={va:.4f}  lr={opt.param_groups[0]['lr']:.2e}", flush=True)
         if va < best - 1e-5:
             best, stale = va, 0
-            torch.save(model.state_dict(), ckpt)
+            torch.save(eval_model.state_dict(), ckpt)
         else:
             stale += 1
             if stale >= a.early_stop:
@@ -194,6 +209,8 @@ def main() -> None:
             "n_subgraphs": a.n_subgraphs,
             "warm_started_from_checkpoint": bool(a.init_from),
             "prior_epochs_before_warm_start": a.resumed_from_epoch,
+            "training": {"seed": a.seed, "scheduler": a.scheduler, "ema_decay": a.ema_decay,
+                         "epochs": a.epochs, "early_stop": a.early_stop, "lr": a.lr},
         },
         "data": {s: len(ds[s]) for s in ds},
         "metrics": m,

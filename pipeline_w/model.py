@@ -25,8 +25,10 @@ class CascadeAttentionGRURegressor(nn.Module):
         num_layers: int = 1,
         attention_dim: int = 64,
         dropout: float = 0.3,
+        side_dim: int = 0,
     ) -> None:
         super().__init__()
+        self.side_dim = side_dim
         self.input_norm = nn.LayerNorm(input_dim)
         self.gru = nn.GRU(
             input_size=input_dim,
@@ -38,7 +40,9 @@ class CascadeAttentionGRURegressor(nn.Module):
         )
         encoded_dim = hidden_size * 2
         self.pooling = LearnedAttentionPooling(encoded_dim, attention_dim)
-        self.head = BottleneckHead(encoded_dim, dropout)
+        # Cascade-level side features (publish hour, momentum) join the attended
+        # context just before the head; side_dim=0 is the original architecture.
+        self.head = BottleneckHead(encoded_dim + side_dim, dropout)
 
     def init_target_bias(self, mean_log_target: float) -> None:
         """Start the head predicting the training mean, so early epochs spend their
@@ -47,13 +51,16 @@ class CascadeAttentionGRURegressor(nn.Module):
         if isinstance(last, nn.Linear) and last.bias is not None:
             nn.init.constant_(last.bias, float(mean_log_target))
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor,
+                side: torch.Tensor | None = None) -> torch.Tensor:
         x = self.input_norm(x)
         lengths = (~padding_mask).sum(dim=1).clamp_min(1).detach().cpu()
         packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         packed_out, _ = self.gru(packed)
         hidden, _ = pad_packed_sequence(packed_out, batch_first=True, total_length=x.shape[1])
         context, _ = self.pooling(hidden, padding_mask)
+        if self.side_dim:
+            context = torch.cat([context, side], dim=-1)
         return self.head(context)
 
     @torch.no_grad()
@@ -108,9 +115,10 @@ class MeanPredictor:
 
 
 def build_model(name: str, input_dim: int, hidden_size: int, num_layers: int,
-                attention_dim: int, dropout: float) -> nn.Module:
+                attention_dim: int, dropout: float, side_dim: int = 0) -> nn.Module:
     if name == "attention_gru":
-        return CascadeAttentionGRURegressor(input_dim, hidden_size, num_layers, attention_dim, dropout)
+        return CascadeAttentionGRURegressor(input_dim, hidden_size, num_layers, attention_dim,
+                                            dropout, side_dim)
     if name == "mean_pool":
         return PoolingRegressor("mean", input_dim, dropout)
     if name == "max_pool":

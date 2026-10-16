@@ -17,11 +17,12 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 from torch.utils.data import DataLoader
 
 from pipeline_c.data import LengthGroupedBatchSampler
 
-from .data import SequenceScaler, WeiboCascadeDataset, pad_collate_fn
+from .data import SIDE_DIM, SequenceScaler, WeiboCascadeDataset, pad_collate_fn
 from .model import MeanPredictor, build_model
 from .weibo_parser import FEATURE_DIM
 
@@ -139,21 +140,24 @@ def classification_metrics(
 # Train / eval loops
 # ---------------------------------------------------------------------------
 
-def run_epoch(model, loader, criterion, device, optimizer=None) -> float:
+def run_epoch(model, loader, criterion, device, optimizer=None, ema=None) -> float:
     training = optimizer is not None
     model.train(training)
     total, batches = 0.0, 0
 
-    for x, mask, y_log, _ in loader:
+    for x, mask, y_log, _, *side in loader:
         x, mask, y_log = x.to(device), mask.to(device), y_log.to(device)
+        side = [t.to(device) for t in side]
         with torch.set_grad_enabled(training):
-            pred = model(x, mask)
+            pred = model(x, mask, *side)
             loss = criterion(pred, y_log)
             if training:
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
+                if ema is not None:
+                    ema.update_parameters(model)
         total += float(loss.item())
         batches += 1
 
@@ -164,8 +168,8 @@ def run_epoch(model, loader, criterion, device, optimizer=None) -> float:
 def collect_predictions(model, loader, device) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     model.eval()
     preds, trues_log, trues_raw = [], [], []
-    for x, mask, y_log, y_raw in loader:
-        out = model(x.to(device), mask.to(device))
+    for x, mask, y_log, y_raw, *side in loader:
+        out = model(x.to(device), mask.to(device), *[t.to(device) for t in side])
         preds.append(out.cpu().numpy().ravel())
         trues_log.append(y_log.numpy().ravel())
         trues_raw.append(y_raw.numpy().ravel())
@@ -174,15 +178,26 @@ def collect_predictions(model, loader, device) -> tuple[np.ndarray, np.ndarray, 
 
 def train_one(name, args, loaders, mean_log_target, device, out_dir) -> dict:
     train_loader, val_loader, test_loader = loaders
+    side_dim = SIDE_DIM if (args.side_features and name == "attention_gru") else 0
     model = build_model(name, FEATURE_DIM, args.hidden_size, args.num_layers,
-                        args.attention_dim, args.dropout).to(device)
+                        args.attention_dim, args.dropout, side_dim).to(device)
     model.init_target_bias(mean_log_target)
 
     criterion = nn.MSELoss()          # MSE on log2(y+1) == MSLE
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=args.patience, factor=0.5
-    )
+    if args.scheduler == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs, eta_min=args.lr * 0.05
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", patience=args.patience, factor=0.5
+        )
+    # An exponential moving average of the weights is what gets validated and saved:
+    # it smooths the epoch-to-epoch jitter in val MSLE that made early stopping fire early.
+    ema = (AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(args.ema_decay))
+           if args.ema_decay > 0 else None)
+    eval_model = ema.module if ema is not None else model
 
     best_val, stale = float("inf"), 0
     ckpt = out_dir / f"best_{name}.pt"
@@ -190,16 +205,19 @@ def train_one(name, args, loaders, mean_log_target, device, out_dir) -> dict:
 
     print(f"\n--- Training {name} ({sum(p.numel() for p in model.parameters()):,} params) ---", flush=True)
     for epoch in range(1, args.epochs + 1):
-        tr = run_epoch(model, train_loader, criterion, device, optimizer)
-        va = run_epoch(model, val_loader, criterion, device)
-        scheduler.step(va)
+        tr = run_epoch(model, train_loader, criterion, device, optimizer, ema)
+        va = run_epoch(eval_model, val_loader, criterion, device)
+        if args.scheduler == "cosine":
+            scheduler.step()
+        else:
+            scheduler.step(va)
         lr_now = optimizer.param_groups[0]["lr"]
         history.append({"model": name, "epoch": epoch, "train_msle": tr, "val_msle": va, "lr": lr_now})
         print(f"[{name}] epoch {epoch:03d}/{args.epochs:03d}  train_MSLE={tr:.4f}  val_MSLE={va:.4f}  lr={lr_now:.2e}", flush=True)
 
         if va < best_val - 1e-5:
             best_val, stale = va, 0
-            torch.save(model.state_dict(), ckpt)
+            torch.save(eval_model.state_dict(), ckpt)
         else:
             stale += 1
             if stale >= args.early_stop:
@@ -207,9 +225,15 @@ def train_one(name, args, loaders, mean_log_target, device, out_dir) -> dict:
                 break
 
     model.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
-    pred, true_log, true_raw = collect_predictions(model, test_loader, device)
-    val_pred, _, val_true_raw = collect_predictions(model, val_loader, device)
+    val_pred, val_true_log, val_true_raw = collect_predictions(model, val_loader, device)
+    if test_loader is None:
+        # Tuning mode: model selection must never see the test split.
+        pred, true_log, true_raw = val_pred, val_true_log, val_true_raw
+    else:
+        pred, true_log, true_raw = collect_predictions(model, test_loader, device)
     metrics = regression_metrics(pred, true_log, true_raw)
+    metrics["evaluated_on"] = "val" if test_loader is None else "test"
+    metrics["n_params"] = sum(p.numel() for p in model.parameters())
     metrics["best_val_MSLE_log2"] = float(best_val)
     return {
         "metrics": metrics,
@@ -230,15 +254,27 @@ def main() -> None:
     data_dir = Path(args.data_dir)
 
     print("=" * 70)
-    print(" PIPELINE W: 15-MINUTE EARLY PREDICTION ON THE DEEPHAWKES WEIBO BENCHMARK")
+    print(f" PIPELINE W: {args.observation_window_note // 60}-MINUTE OBSERVATION ON THE DEEPHAWKES WEIBO BENCHMARK")
     print("=" * 70)
     print(f"• Device: {device}  (threads={torch.get_num_threads()}, bucketed_batches={args.bucket})", flush=True)
 
-    train_ds = WeiboCascadeDataset(data_dir / "weibo_train.npz", target=args.target)
+    side_window = args.observation_window_note if args.side_features else None
+    train_ds = WeiboCascadeDataset(data_dir / "weibo_train.npz", target=args.target, side_window=side_window)
     scaler = SequenceScaler().fit(train_ds.X_flat)
     train_ds.scaler = scaler
-    val_ds = WeiboCascadeDataset(data_dir / "weibo_val.npz", scaler=scaler, target=args.target)
-    test_ds = WeiboCascadeDataset(data_dir / "weibo_test.npz", scaler=scaler, target=args.target)
+    val_ds = WeiboCascadeDataset(data_dir / "weibo_val.npz", scaler=scaler, target=args.target,
+                                 side_window=side_window)
+    test_ds = WeiboCascadeDataset(data_dir / "weibo_test.npz", scaler=scaler, target=args.target,
+                                  side_window=side_window)
+    if args.side_features:
+        t_max = float(train_ds.X_flat[:, 8].max())
+        if t_max >= args.observation_window_note:
+            raise SystemExit(f"--observation-window-note {args.observation_window_note} is shorter "
+                             f"than the data's events ({t_max:.0f}s); the side features would be wrong.")
+        side_mean = train_ds.side.mean(axis=0)
+        side_std = np.maximum(train_ds.side.std(axis=0), 1e-6)
+        for ds in (train_ds, val_ds, test_ds):
+            ds.set_side_scaling(side_mean, side_std)
 
     mean_log_target = float(train_ds.log_targets().mean())
     print(f"• Cascades: train={len(train_ds):,}  val={len(val_ds):,}  test={len(test_ds):,}", flush=True)
@@ -258,12 +294,13 @@ def main() -> None:
         return DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle,
                           collate_fn=pad_collate_fn, num_workers=args.num_workers)
 
-    loaders = (loader(train_ds, True), loader(val_ds, False), loader(test_ds, False))
+    loaders = (loader(train_ds, True), loader(val_ds, False),
+               None if args.skip_test else loader(test_ds, False))
 
     # Non-learned reference: predict the training mean for every cascade.
     test_true_log = test_ds.log_targets()
     baseline = MeanPredictor(mean_log_target)
-    results = {
+    results = {} if args.skip_test else {
         "mean_baseline": {
             "metrics": regression_metrics(
                 baseline.predict(len(test_ds)).numpy().ravel(), test_true_log, test_ds.y_raw
@@ -283,7 +320,7 @@ def main() -> None:
         results[name] = {"metrics": res["metrics"]}
 
     # Optional top-k% classification framing (our adaptation, not the DeepHawkes task).
-    if args.classify_top_pct > 0 and best_preds is not None:
+    if args.classify_top_pct > 0 and best_preds is not None and not args.skip_test:
         # Cutoff comes from the training split only -- deriving it from test would
         # leak the test label distribution into the task definition.
         cutoff = float(np.percentile(train_ds.y_raw, 100.0 - args.classify_top_pct))
@@ -304,10 +341,17 @@ def main() -> None:
             "feature_dim": FEATURE_DIM,
             "note": (
                 "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. "
-                "This run uses a 15-minute window, which is a strictly harder "
-                "early-prediction setting and is NOT directly comparable to their "
-                "published numbers."
+                + ("This run uses the 1-hour window, directly comparable in setting."
+                   if args.observation_window_note == 3600 else
+                   f"This run uses a {args.observation_window_note // 60}-minute window, which is "
+                   "NOT directly comparable to their published numbers.")
             ),
+            "training": {
+                "seed": args.seed, "scheduler": args.scheduler, "ema_decay": args.ema_decay,
+                "early_stop": args.early_stop, "epochs": args.epochs, "lr": args.lr,
+                "hidden_size": args.hidden_size, "num_layers": args.num_layers,
+                "side_features": args.side_features, "evaluated_on": "val" if args.skip_test else "test",
+            },
         },
         "data": {
             "train_cascades": len(train_ds),
@@ -323,7 +367,8 @@ def main() -> None:
     (out_dir / "scaler.json").write_text(json.dumps(scaler.state_dict(), indent=2), encoding="utf-8")
 
     print("\n" + "=" * 70)
-    print(f" TEST-SET RESULTS ({args.observation_window_note}s observation -> 24-hour popularity)")
+    split_name = "VALIDATION (tuning mode)" if args.skip_test else "TEST-SET"
+    print(f" {split_name} RESULTS ({args.observation_window_note}s observation -> 24-hour popularity)")
     print("=" * 70)
     header = f"{'model':<18}{'MSLE(log2)':>12}{'MAE':>12}{'RMSE':>12}{'R2':>9}{'PCC':>8}"
     print(header)
@@ -371,7 +416,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--classify-top-pct", type=float, default=5.0,
                    help="Also report top-k%% classification metrics (0 to disable).")
     p.add_argument("--observation-window-note", type=int, default=900,
-                   help="Recorded in the report for provenance; must match the parser setting.")
+                   help="Observation window in seconds; must match the parser setting. "
+                        "Also used to build the side features.")
+    p.add_argument("--scheduler", choices=["plateau", "cosine"], default="plateau")
+    p.add_argument("--ema-decay", type=float, default=0.0,
+                   help="Validate and save an EMA of the weights (0 = off, e.g. 0.999).")
+    p.add_argument("--side-features", action="store_true",
+                   help="Feed publish hour and momentum summaries to the attention_gru head.")
+    p.add_argument("--skip-test", action="store_true",
+                   help="Tuning mode: never touch the test split; report validation metrics.")
     return p.parse_args()
 
 
