@@ -203,16 +203,3 @@ This project builds directly upon and compares against foundational works in inf
 5. **CasCN:** X. Chen, F. Zhou, K. Zhang, G. Trajcevski, T. Zhong, F. Zhang. *"Information Diffusion Prediction via Recurrent Cascades Convolution."* *IEEE ICDE*, pp. 770–781, 2019.
 6. **CasFlow:** X. Xu, F. Zhou, K. Zhang, S. Liu, G. Trajcevski. *"CasFlow: Exploring Hierarchical Structures and Propagation Uncertainty for Cascade Prediction."* *IEEE TKDE*, 35(4):3484–3499, 2023.
 
----
-
-## 👥 Authors & Academic Affiliation
-
-**Amrita Vishwa Vidyapeetham, Department of Computer Science and Engineering**  
-*Course: 23CSE498 – Project Phase 2 (Team 92)*
-
-* **Varun S** (`CB.SC.U4CSE23157`)
-* **Kavin Karthic M** (`CB.SC.U4CSE23161`)
-* **Aswath Siddharth R** (`CB.SC.U4CSE23109`)
-* **Darshan R** (`CB.SC.U4CSE23115`)
-* **Harish Krishna B** (`CB.SC.U4CSE23323`)
-* **Project Guide:** Mr. Dayanand V, Assistant Professor, Department of CSE
