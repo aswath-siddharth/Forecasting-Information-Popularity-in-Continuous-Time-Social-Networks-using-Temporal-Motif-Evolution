@@ -3,6 +3,11 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.5](https://img.shields.io/badge/PyTorch-2.5-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Site](https://img.shields.io/badge/Documentation%20Site-Live%20on%20Vercel-06b6d4.svg?style=flat&logo=vercel)](https://documentation-site-group-92.vercel.app/)
+
+> 🌐 **Live Documentation Portal & Research Showcase:**  
+> **[https://documentation-site-group-92.vercel.app/](https://documentation-site-group-92.vercel.app/)**  
+> Explore the live interactive diffusion simulator, real-time dynamic CSR array inspector, video demonstration walkthrough, and controlled benchmark explorer.
 
 An end-to-end, GNN-free framework for **early information cascade popularity forecasting** in continuous-time social networks. 
 
@@ -202,4 +207,21 @@ This project builds directly upon and compares against foundational works in inf
 4. **Structural Virality:** S. Goel, A. Anderson, J. Hofman, D. J. Watts. *"The Structural Virality of Online Diffusion."* *Management Science*, 62(1):180–196, 2016.
 5. **CasCN:** X. Chen, F. Zhou, K. Zhang, G. Trajcevski, T. Zhong, F. Zhang. *"Information Diffusion Prediction via Recurrent Cascades Convolution."* *IEEE ICDE*, pp. 770–781, 2019.
 6. **CasFlow:** X. Xu, F. Zhou, K. Zhang, S. Liu, G. Trajcevski. *"CasFlow: Exploring Hierarchical Structures and Propagation Uncertainty for Cascade Prediction."* *IEEE TKDE*, 35(4):3484–3499, 2023.
+
+---
+
+## 🌐 Project Website & Documentation Portal
+
+The interactive web documentation portal and demonstration showcase for Group 92 is hosted live on Vercel:
+
+👉 **[https://documentation-site-group-92.vercel.app/](https://documentation-site-group-92.vercel.app/)**
+
+### Portal Highlights:
+- **Interactive Live Simulator:** Real-time continuous-time diffusion cascade simulation on HTML5 Canvas with dynamic branching presets.
+- **Dynamic CSR Memory Inspector:** Real-time visualization of contiguous `indptr`, `indices`, and `timestamps` arrays with active slice highlighting.
+- **Causal Motif Discovery Engine:** Live detection of 5 structural motifs on $G_{t^-}$ with strict lookahead-free guarantees.
+- **Video Walkthrough Showcase:** Chapter-by-chapter presentation player with narration transcript and animated slides.
+- **Controlled Benchmark Dashboard:** Interactive multi-seed comparison against CasSubTS and DeepHawkes on 42,186 Weibo cascades.
+- **Log-Base Trap Converter:** Interactive tool demonstrating the scale difference between $\text{MSLE}_{\log_2}$ and $\text{MSLE}_{\ln}$.
+
 
