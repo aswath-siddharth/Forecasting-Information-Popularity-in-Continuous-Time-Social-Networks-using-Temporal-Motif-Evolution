@@ -1,0 +1,44 @@
+{
+  "model": "CasMotif (15-D Causal Temporal Motifs + Attentive Bi-GRU)",
+  "dataset": "Novel Multi-Subreddit Reddit Dataset (data/)",
+  "params": 49824,
+  "protocol": {
+    "observation_window_seconds": 900,
+    "prediction_horizon_seconds": 86400,
+    "split": "strictly chronological 70/15/15 by post_time",
+    "target": "future increment Delta P = R_24h - R_{T_obs}, log2(Delta P + 1)",
+    "loss": "MSLE (MSE in log2 space)",
+    "batch_size": 64,
+    "optimizer": "AdamW",
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "scheduler": "ReduceLROnPlateau(factor=0.5, patience=3)",
+    "grad_clip_max_norm": 1.0,
+    "early_stop_patience": 8,
+    "max_epochs": 60,
+    "checkpoint": "best validation MSLE epoch",
+    "seed": 43,
+    "device": "cuda"
+  },
+  "data": {
+    "train": 23485,
+    "val": 5032,
+    "test": 5034
+  },
+  "metrics": {
+    "MSLE_log2": 0.5753706734154154,
+    "MSLE_ln": 0.27643857416258144,
+    "RMSLE_log2": 0.7585319198395116,
+    "MAE_count": 39.08032016344591,
+    "RMSE_count": 46.7756787718308,
+    "MedAE_count": 36.087822344442856,
+    "R2_log2": 0.09336745729448026,
+    "PCC_log2": 0.3160724045744145,
+    "n_samples": 5034,
+    "MAPE_log2": 0.0880112275481224,
+    "MAPE_count": 0.5764991044998169,
+    "best_val_MSLE_log2": 0.4312718627102013,
+    "best_epoch": 5,
+    "train_wall_seconds": 39.53722667694092
+  }
+}
