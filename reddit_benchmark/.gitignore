@@ -1,0 +1,3 @@
+# Regenerable parsed feature/path caches and large DeepHawkes user-embedding checkpoints
+cache/
+runs_*/deephawkes/*/best_deephawkes.pt
