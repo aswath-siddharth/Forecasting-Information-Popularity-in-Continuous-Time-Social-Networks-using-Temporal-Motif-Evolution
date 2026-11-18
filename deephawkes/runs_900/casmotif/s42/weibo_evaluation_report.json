@@ -1,0 +1,59 @@
+{
+  "setting": {
+    "dataset": "Sina Weibo (released with DeepHawkes, Cao et al., CIKM 2017)",
+    "observation_window_seconds": 900,
+    "prediction_horizon_hours": 24,
+    "target": "increment retweets (DeepHawkes target = increment after the window)",
+    "loss": "MSE on log2(y+1), i.e. MSLE in log2 units",
+    "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
+    "feature_dim": 15,
+    "note": "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. This run uses a 15-minute window, which is a strictly harder early-prediction setting and is NOT directly comparable to their published numbers."
+  },
+  "data": {
+    "train_cascades": 16509,
+    "val_cascades": 3538,
+    "test_cascades": 3538,
+    "mean_events_per_cascade": 45.301774789508755
+  },
+  "results": {
+    "mean_baseline": {
+      "metrics": {
+        "MSLE_log2": 5.756261330256448,
+        "MSLE_ln": 2.765613105022506,
+        "RMSLE_log2": 2.3992209840397045,
+        "MAE_count": 267.30357578368995,
+        "RMSE_count": 1391.2073529059094,
+        "MedAE_count": 51.91180035789357,
+        "R2_log2": -0.0004001909510471524,
+        "PCC_log2": NaN,
+        "n_samples": 3538
+      }
+    },
+    "attention_gru": {
+      "metrics": {
+        "MSLE_log2": 2.4162163939083134,
+        "MSLE_ln": 1.1608784487318173,
+        "RMSLE_log2": 1.5544183458478331,
+        "MAE_count": 205.215768060202,
+        "RMSE_count": 1284.4422879688645,
+        "MedAE_count": 31.415763679009626,
+        "R2_log2": 0.5800775536966586,
+        "PCC_log2": 0.7635499126050664,
+        "n_samples": 3538,
+        "best_val_MSLE_log2": 2.435311920940876
+      },
+      "classification": {
+        "cutoff_count": 1008.0,
+        "decision_threshold_log2": 9.744562767833928,
+        "val_f1_at_threshold": 0.5979899497487438,
+        "positive_rate": 0.04889768230638779,
+        "accuracy": 0.9609949123798757,
+        "precision": 0.6190476190476191,
+        "recall": 0.5260115606936416,
+        "f1": 0.56875,
+        "roc_auc": 0.8531482706198628,
+        "pr_auc": 0.5384976618572386
+      }
+    }
+  }
+}
