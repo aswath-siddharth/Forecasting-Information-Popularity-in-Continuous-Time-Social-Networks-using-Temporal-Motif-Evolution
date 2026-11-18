@@ -1,4 +1,4 @@
-"""Generate 3-panel model comparison chart for the novel Reddit benchmark."""
+"""Generate publication-quality 3-panel model comparison chart for the novel Reddit benchmark."""
 
 from __future__ import annotations
 
@@ -25,12 +25,14 @@ def main() -> None:
         "axes.spines.right": False,
     })
 
-    fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.2), dpi=220)
+    fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.4), dpi=220)
     fig.patch.set_facecolor("white")
 
     c_mean, c_dh, c_cm = "#94a3b8", "#e11d48", "#0f766e"
 
-    # Panel A: 1-Hour Window
+    # ------------------------------------------------------------------
+    # Panel A: 1-Hour Window (246,232 cascades)
+    # ------------------------------------------------------------------
     ax = axes[0]
     m1 = r3600["mean_baseline"]["MSLE_log2"]
     dh1 = r3600["deephawkes"]["summary"]["MSLE_log2"]["mean"]
@@ -51,22 +53,24 @@ def main() -> None:
     ax.set_xticklabels(["Mean\nBaseline", "DeepHawkes\n(CIKM '17)", "CasMotif\n(Ours)"])
     ax.set_ylabel("MSLE (log₂)  ↓ lower is better", fontweight="bold")
     ax.set_title(f"(a) Reddit 1-Hour Window ({r3600['total_cascades']:,} cascades)", fontweight="bold", pad=12)
-    ax.set_ylim(0, max(vals_a) * 1.24)
+    ax.set_ylim(0, 1.15)
     ax.grid(axis="y", linestyle="--", alpha=0.35)
     ax.set_axisbelow(True)
     for b, v, e, r2 in zip(bars_a, vals_a, errs_a, r2_a):
         txt = f"{v:.3f}\n(R²={r2:.3f})" if e == 0 else f"{v:.3f} ±{e:.3f}\n(R²={r2:.3f})"
-        ax.text(b.get_x() + b.get_width() / 2, v + e + max(vals_a) * 0.025, txt, ha="center", va="bottom", fontsize=8.6, fontweight="bold")
+        ax.text(b.get_x() + b.get_width() / 2, v + e + 0.022, txt, ha="center", va="bottom", fontsize=8.6, fontweight="bold")
     ax.annotate(
-        f"{-red1:+.1f}% vs DeepHawkes\n(p = {p1:.2e})",
-        xy=(2.0, cm1 + cm1_s + max(vals_a) * 0.13),
-        xytext=(1.45, max(vals_a) * 0.98),
-        ha="center", fontsize=8.5, fontweight="bold", color=c_cm,
+        f"−{red1:.1f}% vs DeepHawkes\n(+70% R² | p = {p1:.1e})",
+        xy=(2.0, cm1 + cm1_s + 0.145),
+        xytext=(1.65, 1.00),
+        ha="center", fontsize=8.4, fontweight="bold", color=c_cm,
         bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0fdfa", edgecolor=c_cm, lw=1.0),
         arrowprops=dict(arrowstyle="->", color=c_cm, lw=1.2, connectionstyle="arc3,rad=-0.12"),
     )
 
-    # Panel B: 15-Minute Window
+    # ------------------------------------------------------------------
+    # Panel B: 15-Minute Window (33,551 cascades)
+    # ------------------------------------------------------------------
     ax = axes[1]
     m2 = r900["mean_baseline"]["MSLE_log2"]
     dh2 = r900["deephawkes"]["summary"]["MSLE_log2"]["mean"]
@@ -87,55 +91,60 @@ def main() -> None:
     ax.set_xticklabels(["Mean\nBaseline", "DeepHawkes\n(CIKM '17)", "CasMotif\n(Ours)"])
     ax.set_ylabel("MSLE (log₂)  ↓ lower is better", fontweight="bold")
     ax.set_title(f"(b) Reddit 15-Min Window ({r900['total_cascades']:,} cascades)", fontweight="bold", pad=12)
-    ax.set_ylim(0, max(vals_b) * 1.24)
+    ax.set_ylim(0, 0.92)
     ax.grid(axis="y", linestyle="--", alpha=0.35)
     ax.set_axisbelow(True)
     for b, v, e, r2 in zip(bars_b, vals_b, errs_b, r2_b):
         txt = f"{v:.3f}\n(R²={r2:.3f})" if e == 0 else f"{v:.3f} ±{e:.3f}\n(R²={r2:.3f})"
-        ax.text(b.get_x() + b.get_width() / 2, v + e + max(vals_b) * 0.025, txt, ha="center", va="bottom", fontsize=8.6, fontweight="bold")
+        ax.text(b.get_x() + b.get_width() / 2, v + e + 0.018, txt, ha="center", va="bottom", fontsize=8.6, fontweight="bold")
     ax.annotate(
-        f"{-red2:+.1f}% vs DeepHawkes\n(p = {p2:.2e})",
-        xy=(2.0, cm2 + cm2_s + max(vals_b) * 0.13),
-        xytext=(1.45, max(vals_b) * 0.98),
-        ha="center", fontsize=8.5, fontweight="bold", color=c_cm,
+        f"−{red2:.1f}% vs DeepHawkes\n(+25% R² | p = {p2:.3f})",
+        xy=(2.0, cm2 + cm2_s + 0.115),
+        xytext=(1.60, 0.80),
+        ha="center", fontsize=8.4, fontweight="bold", color=c_cm,
         bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0fdfa", edgecolor=c_cm, lw=1.0),
         arrowprops=dict(arrowstyle="->", color=c_cm, lw=1.2, connectionstyle="arc3,rad=-0.12"),
     )
 
+    # ------------------------------------------------------------------
     # Panel C: Efficiency Frontier (Params vs 1h MSLE)
+    # ------------------------------------------------------------------
     ax = axes[2]
     cm_p = r3600["params"]["casmotif_single"]
     dh_p = r3600["params"]["deephawkes_single"]["total"]
-    y_lo = min(cm1, dh1) * 0.85
-    y_hi = max(cm1, dh1) * 1.15
     ax.scatter([cm_p], [cm1], s=210, color=c_cm, edgecolor="#0f172a", lw=1.2, zorder=5)
     ax.scatter([dh_p], [dh1], s=210, color=c_dh, edgecolor="#0f172a", lw=1.2, zorder=5)
     ax.annotate(
-        f"CasMotif (Ours)\n{cm_p/1e3:.1f}k params\nMSLE {cm1:.3f} | R² {cm1_r2:.3f}",
-        xy=(cm_p, cm1), xytext=(22, 35), textcoords="offset points",
-        fontsize=8.6, fontweight="bold", color="#0f172a",
+        f"CasMotif (Ours)\n{cm_p/1e3:.1f}k params (889× smaller)\nMSLE {cm1:.3f} | R² {cm1_r2:.3f}",
+        xy=(cm_p, cm1), xytext=(12, 68), textcoords="offset points",
+        fontsize=8.4, fontweight="bold", color="#0f172a",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=c_cm, lw=1.0),
         arrowprops=dict(arrowstyle="->", color=c_cm, lw=1.2),
     )
     ax.annotate(
         f"DeepHawkes\n{dh_p/1e6:.2f}M params\nMSLE {dh1:.3f} | R² {dh1_r2:.3f}",
-        xy=(dh_p, dh1), xytext=(-135, -40), textcoords="offset points",
-        fontsize=8.6, fontweight="bold", color="#0f172a",
+        xy=(dh_p, dh1), xytext=(-142, -72), textcoords="offset points",
+        fontsize=8.4, fontweight="bold", color="#0f172a",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=c_dh, lw=1.0),
         arrowprops=dict(arrowstyle="->", color=c_dh, lw=1.2),
     )
     ax.set_xscale("log")
-    ax.set_xlim(2e4, max(dh_p * 3.0, 5e7))
-    ax.set_ylim(y_lo, y_hi)
+    ax.set_xlim(2e4, 1.5e8)
+    ax.set_ylim(0.55, 0.78)
     ax.set_xlabel("Total Parameters (log scale)  ← smaller is better", fontweight="bold")
     ax.set_ylabel("1-Hour MSLE (log₂)  ↓ lower is better", fontweight="bold")
     ax.set_title("(c) Accuracy vs. Parameter Footprint (1h)", fontweight="bold", pad=12)
     ax.grid(True, which="both", linestyle="--", alpha=0.3)
     ax.set_axisbelow(True)
+    ax.text(
+        0.04, 0.05, "★ Ideal: bottom-left\n(lowest error + fewest params)",
+        transform=ax.transAxes, fontsize=8.2, color=c_cm, fontweight="bold",
+        bbox=dict(boxstyle="round,pad=0.28", facecolor="#f0fdfa", edgecolor=c_cm, lw=0.8),
+    )
 
     fig.suptitle(
-        "Novel Multi-Subreddit Reddit Benchmark (Chronological 70/15/15 Split, 3-Seed Mean ± Std)",
-        fontsize=13, fontweight="bold", y=0.99,
+        "Novel Multi-Subreddit Reddit Benchmark (4,050 Subreddits, Chronological 70/15/15 Split, 3-Seed Mean ± Std)",
+        fontsize=12.5, fontweight="bold", y=0.99,
     )
     plt.tight_layout(rect=[0, 0, 1, 0.94])
 
