@@ -1,3 +1,6 @@
-# Regenerable parsed feature/path caches and large DeepHawkes user-embedding checkpoints
+# Regenerable parsed feature/path caches, large DeepHawkes user-embedding checkpoints
+# (~169 MB at 1h, ~27 MB at 15m), and large uncompressed prediction archives (~10 MB each).
+# All JSON reports, training histories, scalers, CasMotif checkpoints (0.2 MB), and charts are tracked.
 cache/
 runs_*/deephawkes/*/best_deephawkes.pt
+runs_*/*/*/test_predictions.npz
