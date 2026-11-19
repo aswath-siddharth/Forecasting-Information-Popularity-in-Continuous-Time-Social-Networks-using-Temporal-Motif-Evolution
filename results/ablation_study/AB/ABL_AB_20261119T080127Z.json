@@ -1,0 +1,143 @@
+{
+  "experiment_id": "ABL_AB",
+  "pipeline_combination": "AB",
+  "enabled_pipelines": {
+    "A": true,
+    "B": true,
+    "C": false
+  },
+  "input_provenance": {
+    "features": "NEWLY_GENERATED_BY_PIPELINE_A",
+    "labels": "NEWLY_GENERATED_BY_PIPELINE_B",
+    "strict_no_cache_executability": "EXECUTABLE"
+  },
+  "dependencies": {
+    "A": "Requires raw thread stream or lossless edge stream; produces 20-D feature sequences CSV.",
+    "B": "Requires 24-hour comment volume aggregates; produces subreddit percentile virality labels CSV.",
+    "C": "Requires compatible post_id-aligned feature CSV (from A or cache) and label CSV (from B or cache)."
+  },
+  "active_parameters": {
+    "pipeline_a": {
+      "window_size_seconds": 900.0,
+      "window_overlap_stride": 1.0,
+      "temporal_resolution_seconds": 1.0,
+      "chain_depth_threshold": 3,
+      "star_degree_threshold": 1,
+      "reactivation_threshold_seconds": 300.0,
+      "csr_cycle_guard": true,
+      "sentiment_enabled": true,
+      "feature_artifact_version": "v2_t_from_root",
+      "base_features_path": "pipeline_a_features.csv"
+    },
+    "pipeline_b": {
+      "observation_horizon_seconds": 86400.0,
+      "virality_percentile": 0.95,
+      "cutoff_floor": 15.0,
+      "small_community_min_posts": 30,
+      "special_accounts_filter": [
+        "[deleted]",
+        "[removed]",
+        "automoderator"
+      ],
+      "velocity_bin_seconds": 3600,
+      "post_id_mode": "index",
+      "duplicate_post_id_policy": "suffix",
+      "base_labels_path": "pipeline_b_labels.csv"
+    },
+    "pipeline_c_experimental": "NOT_APPLICABLE (Pipeline C disabled)",
+    "pipeline_c_hyperparameters": "NOT_APPLICABLE (Pipeline C disabled)"
+  },
+  "dataset_version": "v2_t_from_root",
+  "seeds": [
+    42
+  ],
+  "git_commit": "b1721938f9fb2a71c4e0d1cfa66c91ba95551058",
+  "start_timestamp_utc": "2026-11-19T08:00:32.685487+00:00",
+  "end_timestamp_utc": "2026-11-19T08:01:27.492400+00:00",
+  "total_runtime_seconds": 54.806894063949585,
+  "peak_memory_mb": 475.375,
+  "execution_status": "COMPLETED",
+  "pipeline_a_output": {
+    "status": "COMPLETED",
+    "source_mode": "parametric_regeneration_from_pipeline_a_features.csv",
+    "raw_json_available": false,
+    "output_csv": "results/ablation_study/AB/ABL_AB_generated_features.csv",
+    "total_posts": 275,
+    "total_window_rows": 11434,
+    "total_edges": 23900,
+    "feature_dim": 20,
+    "window_size_seconds": 900.0,
+    "reactivation_threshold_seconds": 300.0,
+    "chain_depth_threshold": 3,
+    "sequence_length_K_mean": 2.0902571278642643,
+    "sequence_length_K_median": 1.0,
+    "sequence_length_K_max": 71,
+    "sequence_length_K_std": 2.4814662773818044,
+    "motif_counts": {
+      "single_direct_reply": 2658,
+      "sibling_star_fork": 17376,
+      "deep_directed_chain": 6316,
+      "ping_pong_dyad": 4327,
+      "reciprocal_cycle": 1600
+    },
+    "motif_rates": {
+      "single_direct_reply": 0.11121338912133891,
+      "sibling_star_fork": 0.7270292887029288,
+      "deep_directed_chain": 0.26426778242677823,
+      "ping_pong_dyad": 0.18104602510460252,
+      "reciprocal_cycle": 0.06694560669456066
+    },
+    "reactivated_edges_count": 5315,
+    "reactivation_rate": 0.22238493723849373,
+    "sentiment_compound_mean": 0.19521884504589984,
+    "sentiment_compound_std": 0.470423684603445,
+    "runtime_seconds": 54.74447727203369,
+    "peak_memory_mb": 475.375
+  },
+  "pipeline_b_output": {
+    "status": "COMPLETED",
+    "source_mode": "parametric_regeneration_from_pipeline_b_labels.csv",
+    "output_csv": "results/ablation_study/AB/ABL_AB_generated_labels.csv",
+    "total_posts": 275,
+    "subreddits_count": 1,
+    "virality_percentile": 0.95,
+    "cutoff_floor": 15.0,
+    "computed_cutoffs": {
+      "Barca": 180.0
+    },
+    "viral_posts_count": 15,
+    "non_viral_posts_count": 260,
+    "positive_virality_ratio": 0.05454545454545454,
+    "passes_default_5_to_10_pct_assertion": true,
+    "c_24h_mean": 82.33454545454545,
+    "c_24h_median": 72.0,
+    "c_24h_max": 198,
+    "u_24h_mean": 56.410909090909094,
+    "y_reg_mean": 1.8607557870515463,
+    "y_reg_std": 0.233931500975145,
+    "validation_checks": {
+      "leakage_24h_verified": true,
+      "unique_post_ids_verified": true,
+      "zero_nulls_verified": true
+    },
+    "runtime_seconds": 0.024728775024414062,
+    "peak_memory_mb": 475.375
+  },
+  "join_audit": {
+    "feature_input_provenance": "NEWLY_GENERATED_BY_PIPELINE_A",
+    "label_input_provenance": "NEWLY_GENERATED_BY_PIPELINE_B",
+    "features_file": "results/ablation_study/AB/ABL_AB_generated_features.csv",
+    "labels_file": "results/ablation_study/AB/ABL_AB_generated_labels.csv",
+    "feature_rows": 11434,
+    "label_rows": 275,
+    "joined_rows": 11434,
+    "dropped_feature_rows": 0,
+    "dropped_label_rows": 0,
+    "joined_unique_posts": 275,
+    "joined_viral_window_rows": 718,
+    "joined_non_viral_window_rows": 10716,
+    "joined_viral_row_fraction": 0.06279517229316074
+  },
+  "pipeline_c_summary": "NOT_APPLICABLE",
+  "pipeline_c_runs": "NOT_APPLICABLE"
+}
