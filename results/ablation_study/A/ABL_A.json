@@ -1,0 +1,89 @@
+{
+  "experiment_id": "ABL_A",
+  "pipeline_combination": "A",
+  "enabled_pipelines": {
+    "A": true,
+    "B": false,
+    "C": false
+  },
+  "input_provenance": {
+    "features": "NEWLY_GENERATED_BY_PIPELINE_A",
+    "labels": "NOT_USED",
+    "strict_no_cache_executability": "EXECUTABLE"
+  },
+  "dependencies": {
+    "A": "Requires raw thread stream or lossless edge stream; produces 20-D feature sequences CSV.",
+    "B": "Requires 24-hour comment volume aggregates; produces subreddit percentile virality labels CSV.",
+    "C": "Requires compatible post_id-aligned feature CSV (from A or cache) and label CSV (from B or cache)."
+  },
+  "active_parameters": {
+    "pipeline_a": {
+      "window_size_seconds": 900.0,
+      "window_overlap_stride": 1.0,
+      "temporal_resolution_seconds": 1.0,
+      "chain_depth_threshold": 3,
+      "star_degree_threshold": 1,
+      "reactivation_threshold_seconds": 300.0,
+      "csr_cycle_guard": true,
+      "sentiment_enabled": true,
+      "feature_artifact_version": "v2_t_from_root",
+      "base_features_path": "pipeline_a_features.csv"
+    },
+    "pipeline_b": "NOT_APPLICABLE (Pipeline B disabled)",
+    "pipeline_c_experimental": "NOT_APPLICABLE (Pipeline C disabled)",
+    "pipeline_c_hyperparameters": "NOT_APPLICABLE (Pipeline C disabled)"
+  },
+  "dataset_version": "v2_t_from_root",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "git_commit": "b1721938f9fb2a71c4e0d1cfa66c91ba95551058",
+  "start_timestamp_utc": "2026-11-19T07:33:18.635537+00:00",
+  "end_timestamp_utc": "2026-11-19T07:33:20.449242+00:00",
+  "total_runtime_seconds": 1.8135230541229248,
+  "peak_memory_mb": 314.96875,
+  "execution_status": "COMPLETED",
+  "pipeline_a_output": {
+    "status": "COMPLETED",
+    "source_mode": "parametric_regeneration_from_pipeline_a_features.csv",
+    "raw_json_available": false,
+    "output_csv": "results/ablation_study/A/ABL_A_generated_features.csv",
+    "total_posts": 275,
+    "total_window_rows": 11434,
+    "total_edges": 23900,
+    "feature_dim": 20,
+    "window_size_seconds": 900.0,
+    "reactivation_threshold_seconds": 300.0,
+    "chain_depth_threshold": 3,
+    "sequence_length_K_mean": 2.0902571278642643,
+    "sequence_length_K_median": 1.0,
+    "sequence_length_K_max": 71,
+    "sequence_length_K_std": 2.4814662773818044,
+    "motif_counts": {
+      "single_direct_reply": 2658,
+      "sibling_star_fork": 17376,
+      "deep_directed_chain": 6316,
+      "ping_pong_dyad": 4327,
+      "reciprocal_cycle": 1600
+    },
+    "motif_rates": {
+      "single_direct_reply": 0.11121338912133891,
+      "sibling_star_fork": 0.7270292887029288,
+      "deep_directed_chain": 0.26426778242677823,
+      "ping_pong_dyad": 0.18104602510460252,
+      "reciprocal_cycle": 0.06694560669456066
+    },
+    "reactivated_edges_count": 5315,
+    "reactivation_rate": 0.22238493723849373,
+    "sentiment_compound_mean": 0.19521884504589984,
+    "sentiment_compound_std": 0.470423684603445,
+    "runtime_seconds": 1.8107640743255615,
+    "peak_memory_mb": 314.921875
+  },
+  "pipeline_b_output": "NOT_APPLICABLE",
+  "join_audit": "NOT_APPLICABLE",
+  "pipeline_c_summary": "NOT_APPLICABLE",
+  "pipeline_c_runs": "NOT_APPLICABLE"
+}
