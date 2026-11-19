@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-11-19T09:35:08.132395+00:00",
+  "git_commit": "b1721938f9fb2a71c4e0d1cfa66c91ba95551058",
+  "ablation_combinations_completed": [
+    "A",
+    "AB",
+    "ABC",
+    "AC",
+    "B",
+    "BC",
+    "C"
+  ],
+  "baseline_5seed_completed": true,
+  "combined_optimization_5seed_completed": true,
+  "hyperparameter_sensitivity_runs_count": 67,
+  "experimental_parameter_sensitivity_runs_count": 49,
+  "blocked_raw_json_experiments": [
+    {
+      "experiment": "Pipeline B variable observation horizon (T != 24h)",
+      "status": "BLOCKED_MISSING_RAW_JSON",
+      "reason": "Raw comment timestamps in data/*.json are gitignored; cached pipeline_b_labels.csv stores 24h aggregates."
+    },
+    {
+      "experiment": "Pipeline C strict no-cache standalone execution",
+      "status": "REQUIRES_CACHED_UPSTREAM_ARTIFACTS",
+      "reason": "Without executing A or B or loading cached CSVs, Pipeline C has no input features or labels."
+    }
+  ]
+}
