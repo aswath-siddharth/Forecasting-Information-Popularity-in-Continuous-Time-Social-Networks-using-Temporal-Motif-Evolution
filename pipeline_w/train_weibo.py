@@ -303,10 +303,7 @@ def main() -> None:
             "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
             "feature_dim": FEATURE_DIM,
             "note": (
-                "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. "
-                "This run uses a 15-minute window, which is a strictly harder "
-                "early-prediction setting and is NOT directly comparable to their "
-                "published numbers."
+                f"Evaluation on {args.observation_window_note}s observation window with 24h prediction horizon."
             ),
         },
         "data": {
