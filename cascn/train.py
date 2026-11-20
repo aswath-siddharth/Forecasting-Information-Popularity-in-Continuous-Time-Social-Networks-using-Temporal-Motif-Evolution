@@ -8,7 +8,23 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from cascn_model import CasCNModel
+try:
+    from .model import CasCNModel
+except ImportError:
+    from cascn.model import CasCNModel
+
+from pipeline_w.train_weibo import regression_metrics
+
+
+def compute_full_metrics(pred_log2: np.ndarray, true_log2: np.ndarray, true_raw: np.ndarray) -> dict[str, float]:
+    m = regression_metrics(pred_log2, true_log2, true_raw)
+    nz = true_log2 > 0
+    m["MAPE_log2"] = float(np.mean(np.abs((true_log2[nz] - pred_log2[nz]) / true_log2[nz]))) if np.any(nz) else 0.0
+    pred_raw = np.clip(np.exp2(np.clip(pred_log2, -20, 20)) - 1.0, 0.0, None)
+    pos = true_raw > 0
+    m["MAPE_count"] = float(np.mean(np.abs((true_raw[pos] - pred_raw[pos]) / true_raw[pos]))) if np.any(pos) else 0.0
+    m["MALE_log2"] = float(np.mean(np.abs(pred_log2 - true_log2)))
+    return m
 
 def set_seed(seed):
     random.seed(seed)
@@ -132,6 +148,7 @@ def train_single_seed(
     test_data,
     scaler,
     out_dir,
+    observation_window=7200,
     batch_size=64,
     lr=2e-3,
     weight_decay=1e-4,
@@ -142,10 +159,15 @@ def train_single_seed(
     lr_factor=0.5,
     device='cpu',
 ):
+    t_seed_start = time.time()
+    seed_dir = os.path.join(out_dir, f"s{seed}")
+    os.makedirs(seed_dir, exist_ok=True)
+    ckpt_path = os.path.join(seed_dir, "best_cascn.pt")
+
     print(f"\n=======================================================")
     print(f"Starting CasCN Training | Seed = {seed} | Device = {device}")
     print(f"Protocol: Batch={batch_size}, Optimizer=AdamW(lr={lr}, wd={weight_decay}), Clip={max_grad_norm}, ES_Patience={patience_es}, MaxEpochs={max_epochs}")
-    print(f"=======================================================")
+    print(f"=======================================================", flush=True)
 
     set_seed(seed)
     rng = np.random.RandomState(seed)
@@ -175,8 +197,6 @@ def train_single_seed(
     best_epoch = -1
     epochs_no_improve = 0
     history = []
-
-    ckpt_path = os.path.join(out_dir, f'cascn_best_seed_{seed}.pt')
 
     for epoch in range(1, max_epochs + 1):
         t_ep = time.time()
@@ -223,13 +243,7 @@ def train_single_seed(
             best_epoch = epoch
             epochs_no_improve = 0
             improved = True
-            torch.save({
-                'epoch': epoch,
-                'seed': seed,
-                'model_state_dict': model.state_dict(),
-                'best_val_msle': best_val_msle,
-                'scaler': scaler,
-            }, ckpt_path)
+            torch.save(model.state_dict(), ckpt_path)
         else:
             epochs_no_improve += 1
 
@@ -259,44 +273,76 @@ def train_single_seed(
 
     # Restore weights from the lowest validation MSLE checkpoint (Protocol #4)
     print(f"Restoring best checkpoint from Epoch {best_epoch} (Val MSLE = {best_val_msle:.4f})...")
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt['model_state_dict'])
+    model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
 
     val_msle, val_male, val_mape, val_preds, val_targets = evaluate(model, val_batches, len(val_data), device)
     test_msle, test_male, test_mape, test_preds, test_targets = evaluate(model, test_batches, len(test_data), device)
 
-    print(f"[Seed {seed} Final Results @ Best Val Checkpoint (Epoch {best_epoch})]")
-    print(f"  Validation -> MSLE (log2): {val_msle:.4f} | MALE (log2): {val_male:.4f} | MAPE: {val_mape:.4f}")
-    print(f"  Test       -> MSLE (log2): {test_msle:.4f} | MALE (log2): {test_male:.4f} | MAPE: {test_mape:.4f}")
+    val_raw = np.array([d['y_inc'] for d in val_data], dtype=np.float32)
+    test_raw = np.array([d['y_inc'] for d in test_data], dtype=np.float32)
 
-    # Save per-sample test predictions for paired t-test
+    val_m = compute_full_metrics(val_preds, val_targets, val_raw)
+    test_m = compute_full_metrics(test_preds, test_targets, test_raw)
+    elapsed_seed = time.time() - t_seed_start
+
+    print(f"[Seed {seed} Final Results @ Best Val Checkpoint (Epoch {best_epoch})]", flush=True)
+    print(f"  Validation -> MSLE (log2): {val_m['MSLE_log2']:.4f} | R2: {val_m['R2_log2']:.4f} | MAE: {val_m['MAE_count']:.2f}", flush=True)
+    print(f"  Test       -> MSLE (log2): {test_m['MSLE_log2']:.4f} | R2: {test_m['R2_log2']:.4f} | MAE: {test_m['MAE_count']:.2f}", flush=True)
+    print(f"[Seed {seed} DONE] Time: {elapsed_seed:.1f}s ({elapsed_seed/60:.2f} min) | Test MSLE (log2): {test_m['MSLE_log2']:.4f}", flush=True)
+
     np.savez_compressed(
-        os.path.join(out_dir, f'cascn_predictions_seed_{seed}.npz'),
-        val_preds=val_preds,
-        val_targets=val_targets,
-        test_preds=test_preds,
-        test_targets=test_targets,
-        cascade_id_test=np.array([d['cascade_id'] for d in test_data]),
+        os.path.join(seed_dir, 'test_predictions.npz'),
+        cascade_id=np.array([d['cascade_id'] for d in test_data]),
+        pred_log2=test_preds.astype(np.float32),
+        true_log2=test_targets.astype(np.float32),
+        true_raw=test_raw.astype(np.float32),
     )
+
+    pcounts = sum(p.numel() for p in model.parameters())
+    report = {
+        "model": "CasCN (Recurrent Cascades Convolution, ICDE 2019)",
+        "seed": seed,
+        "window_seconds": observation_window,
+        "best_epoch": int(best_epoch),
+        "best_val_msle_log2": float(val_m["MSLE_log2"]),
+        "train_time_sec": elapsed_seed,
+        "train_time_min": elapsed_seed / 60.0,
+        "architecture": {
+            "max_nodes": 100,
+            "max_steps": 100,
+            "num_hidden": 32,
+            "chebyshev_K": 2,
+            "n_time_interval": 6,
+            "mlp_hidden": [32, 16, 1],
+            "params": pcounts,
+        },
+        "val_metrics": val_m,
+        "test_metrics": test_m,
+    }
+    with open(os.path.join(seed_dir, 'cascn_evaluation_report.json'), 'w', encoding='utf-8') as f:
+        json.dump(report, f, indent=2)
+    with open(os.path.join(seed_dir, 'training_history.json'), 'w', encoding='utf-8') as f:
+        json.dump(history, f, indent=2)
 
     return {
         'seed': seed,
         'best_epoch': best_epoch,
-        'val_msle': val_msle,
-        'val_male': val_male,
-        'val_mape': val_mape,
-        'test_msle': test_msle,
-        'test_male': test_male,
-        'test_mape': test_mape,
+        'val_msle': val_m['MSLE_log2'],
+        'test_msle': test_m['MSLE_log2'],
+        'train_time_sec': elapsed_seed,
+        'train_time_min': elapsed_seed / 60.0,
+        'val_metrics': val_m,
+        'test_metrics': test_m,
         'history': history,
     }
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='/Users/priya/Desktop/cascn_implement_in_weibo/data/cascn_preprocessed')
-    parser.add_argument('--out_dir', type=str, default='/Users/priya/Desktop/cascn_implement_in_weibo/results')
+    parser.add_argument('--data_dir', type=str, default='weibo_data/cascn_7200')
+    parser.add_argument('--out_dir', type=str, default='cascn/runs_7200/cascn')
     parser.add_argument('--seeds', type=int, nargs='+', default=[42, 43, 44])
+    parser.add_argument('--observation_window', type=int, default=7200)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=2e-3)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
@@ -305,10 +351,10 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=60)
     parser.add_argument('--lr_patience', type=int, default=3)
     parser.add_argument('--lr_factor', type=float, default=0.5)
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
-    torch.set_num_threads(2)
 
     print("Loading preprocessed Weibo cascades...")
     with open(os.path.join(args.data_dir, 'cascn_train.pkl'), 'rb') as f:
@@ -320,10 +366,7 @@ if __name__ == '__main__':
     with open(os.path.join(args.data_dir, 'train_scaler.pkl'), 'rb') as f:
         scaler = pickle.load(f)
 
-    print(f"Dataset split verification: Train={len(train_data)}, Val={len(val_data)}, Test={len(test_data)} (Total={len(train_data)+len(val_data)+len(test_data)})")
-    assert len(train_data) == 29530, f"Expected 29530 train cascades, got {len(train_data)}"
-    assert len(val_data) == 6328, f"Expected 6328 val cascades, got {len(val_data)}"
-    assert len(test_data) == 6328, f"Expected 6328 test cascades, got {len(test_data)}"
+    print(f"Dataset split verification: Train={len(train_data):,}, Val={len(val_data):,}, Test={len(test_data):,} (Total={len(train_data)+len(val_data)+len(test_data):,})")
 
     all_results = []
     for seed in args.seeds:
@@ -334,6 +377,7 @@ if __name__ == '__main__':
             test_data=test_data,
             scaler=scaler,
             out_dir=args.out_dir,
+            observation_window=args.observation_window,
             batch_size=args.batch_size,
             lr=args.lr,
             weight_decay=args.weight_decay,
@@ -342,60 +386,63 @@ if __name__ == '__main__':
             max_epochs=args.max_epochs,
             lr_patience=args.lr_patience,
             lr_factor=args.lr_factor,
-            device='cpu',
+            device=args.device,
         )
         all_results.append(res)
-        seed_json_path = os.path.join(args.out_dir, f'cascn_metrics_seed_{seed}.json')
-        with open(seed_json_path, 'w') as f:
-            json.dump(res, f, indent=2)
-        if len(args.seeds) > 1:
-            with open(os.path.join(args.out_dir, 'cascn_metrics_summary.json'), 'w') as f:
-                json.dump({'seeds_results': all_results}, f, indent=2)
 
-    val_msles = [r['val_msle'] for r in all_results]
-    test_msles = [r['test_msle'] for r in all_results]
-    test_males = [r['test_male'] for r in all_results]
-    test_mapes = [r['test_mape'] for r in all_results]
+    existing_summary_path = os.path.join(args.out_dir, 'cascn_metrics_summary.json')
+    merged_results = {}
+    if os.path.exists(existing_summary_path):
+        try:
+            with open(existing_summary_path, 'r', encoding='utf-8') as f:
+                old_summary = json.load(f)
+                for r in old_summary.get('seeds_results', []):
+                    merged_results[r['seed']] = r
+        except Exception:
+            pass
+
+    for r in all_results:
+        merged_results[r['seed']] = r
+
+    combined_results = list(merged_results.values())
+    combined_seeds = [r['seed'] for r in combined_results]
+    val_msles = [r['val_msle'] for r in combined_results]
+    test_msles = [r['test_msle'] for r in combined_results]
 
     summary = {
         'protocol': {
-            'split_ratio': '70% Train (29,530) / 15% Val (6,328) / 15% Test (6,328)',
+            'split_ratio': f'70% Train ({len(train_data)}) / 15% Val ({len(val_data)}) / 15% Test ({len(test_data)})',
             'split_strategy': 'Strictly Chronological by t0',
-            'observation_window_sec': 3600,
+            'observation_window_sec': args.observation_window,
             'prediction_horizon_sec': 86400,
-            'prediction_target': 'Delta P = R_24h - R_1h',
-            'loss_function': 'MSLE in log2 base: mean((log2(Delta P_hat + 1) - log2(Delta P + 1))^2)',
+            'prediction_target': f'Delta P = R_24h - R_{args.observation_window}s',
+            'loss_function': 'MSLE in log2 base',
             'batch_size': args.batch_size,
             'optimizer': f'AdamW (lr={args.lr}, weight_decay={args.weight_decay})',
             'lr_schedule': f'ReduceLROnPlateau (factor={args.lr_factor}, patience={args.lr_patience})',
             'grad_clip_max_norm': args.max_grad_norm,
             'early_stopping': f'Patience={args.patience} epochs (max {args.max_epochs} epochs)',
             'checkpoint': 'Best Validation MSLE Epoch',
-            'seeds': args.seeds,
-            'feature_scaler': 'Fit on Train split ONLY (29,530 cascades)',
+            'seeds': combined_seeds,
+            'feature_scaler': f'Fit on Train split ONLY ({len(train_data)} cascades)',
         },
         'val_msle_mean': float(np.mean(val_msles)),
         'val_msle_std': float(np.std(val_msles, ddof=1) if len(val_msles) > 1 else 0.0),
         'test_msle_mean': float(np.mean(test_msles)),
         'test_msle_std': float(np.std(test_msles, ddof=1) if len(test_msles) > 1 else 0.0),
-        'test_male_mean': float(np.mean(test_males)),
-        'test_male_std': float(np.std(test_males, ddof=1) if len(test_males) > 1 else 0.0),
-        'test_mape_mean': float(np.mean(test_mapes)),
-        'test_mape_std': float(np.std(test_mapes, ddof=1) if len(test_mapes) > 1 else 0.0),
-        'seeds_results': all_results,
+        'seeds_results': combined_results,
     }
 
-    with open(os.path.join(args.out_dir, 'cascn_metrics_summary.json'), 'w') as f:
+    with open(os.path.join(args.out_dir, 'cascn_metrics_summary.json'), 'w', encoding='utf-8') as f:
         json.dump(summary, f, indent=2)
 
-    print("\n=======================================================")
-    print("FINAL MULTI-SEED SUMMARY (Seeds: 42, 43, 44)")
-    print("=======================================================")
-    for r in all_results:
-        print(f"  Seed {r['seed']}: Best Ep = {r['best_epoch']:02d} | Val MSLE = {r['val_msle']:.4f} | Test MSLE = {r['test_msle']:.4f} | Test MALE = {r['test_male']:.4f}")
-    print("-------------------------------------------------------")
-    print(f"  Validation MSLE (log2): {summary['val_msle_mean']:.4f} ± {summary['val_msle_std']:.4f}")
-    print(f"  Test MSLE       (log2): {summary['test_msle_mean']:.4f} ± {summary['test_msle_std']:.4f}")
-    print(f"  Test MALE       (log2): {summary['test_male_mean']:.4f} ± {summary['test_male_std']:.4f}")
-    print(f"  Test MAPE       (log2): {summary['test_mape_mean']:.4f} ± {summary['test_mape_std']:.4f}")
-    print("=======================================================")
+    print("\n=======================================================", flush=True)
+    print(f"FINAL MULTI-SEED SUMMARY (Seeds: {combined_seeds})", flush=True)
+    print("=======================================================", flush=True)
+    for r in combined_results:
+        time_str = f" | Time: {r.get('train_time_min', 0):.2f} min" if 'train_time_min' in r else ""
+        print(f"  Seed {r['seed']}: Best Ep = {r['best_epoch']:02d} | Val MSLE = {r['val_msle']:.4f} | Test MSLE = {r['test_msle']:.4f}{time_str}", flush=True)
+    print("-------------------------------------------------------", flush=True)
+    print(f"  Validation MSLE (log2): {summary['val_msle_mean']:.4f} ± {summary['val_msle_std']:.4f}", flush=True)
+    print(f"  Test MSLE       (log2): {summary['test_msle_mean']:.4f} ± {summary['test_msle_std']:.4f}", flush=True)
+    print("=======================================================", flush=True)

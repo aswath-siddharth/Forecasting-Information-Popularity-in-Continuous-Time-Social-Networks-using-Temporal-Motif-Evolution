@@ -1,0 +1,48 @@
+{
+  "model": "CasCN (Recurrent Cascades Convolution, ICDE 2019)",
+  "seed": 42,
+  "window_seconds": 7200,
+  "best_epoch": 19,
+  "best_val_msle_log2": 2.5807263465158448,
+  "architecture": {
+    "max_nodes": 100,
+    "max_steps": 100,
+    "num_hidden": 32,
+    "chebyshev_K": 2,
+    "n_time_interval": 6,
+    "mlp_hidden": [
+      32,
+      16,
+      1
+    ],
+    "params": 35623
+  },
+  "val_metrics": {
+    "MSLE_log2": 2.5807263465158448,
+    "MSLE_ln": 1.2399177512816462,
+    "RMSLE_log2": 1.606463926303932,
+    "MAE_count": 53.620895520171125,
+    "RMSE_count": 265.83298913325933,
+    "MedAE_count": 7.6271790552181775,
+    "R2_log2": 0.5104990267863747,
+    "PCC_log2": 0.7166285084850482,
+    "n_samples": 7586,
+    "MAPE_log2": 0.29012513160705566,
+    "MAPE_count": 1.0053218603134155,
+    "MALE_log2": 1.1527904272079468
+  },
+  "test_metrics": {
+    "MSLE_log2": 2.4407148114034016,
+    "MSLE_ln": 1.1726487872535587,
+    "RMSLE_log2": 1.562278723980904,
+    "MAE_count": 57.43386278004405,
+    "RMSE_count": 571.5234398050725,
+    "MedAE_count": 7.265526944238437,
+    "R2_log2": 0.5123477942726204,
+    "PCC_log2": 0.7160699592107121,
+    "n_samples": 7587,
+    "MAPE_log2": 0.29805511236190796,
+    "MAPE_count": 1.0379077196121216,
+    "MALE_log2": 1.1033430099487305
+  }
+}

@@ -122,14 +122,23 @@ def summarize_seeds(per_seed_metrics: dict[str, dict[str, float]]) -> dict[str, 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Controlled multi-seed comparison: CasMotif vs CasCN.")
-    p.add_argument("--window", type=int, default=3600)
-    p.add_argument("--splits-dir", type=str, default="weibo_data/processed_3600")
+    p.add_argument("--window", type=int, default=7200)
+    p.add_argument("--splits-dir", type=str, default=None)
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
-    p.add_argument("--ours-root", default="cascn/runs_3600/casmotif")
-    p.add_argument("--cascn-root", default="cascn/runs_3600/cascn")
+    p.add_argument("--ours-root", default=None)
+    p.add_argument("--cascn-root", default=None)
     p.add_argument("--bootstrap", type=int, default=10000)
-    p.add_argument("--output", default="cascn/runs_3600/comparison_report.json")
+    p.add_argument("--output", default=None)
     args = p.parse_args()
+
+    if args.splits_dir is None:
+        args.splits_dir = f"weibo_data/processed_{args.window}"
+    if args.ours_root is None:
+        args.ours_root = f"cascn/runs_{args.window}/casmotif"
+    if args.cascn_root is None:
+        args.cascn_root = f"cascn/runs_{args.window}/cascn"
+    if args.output is None:
+        args.output = f"cascn/runs_{args.window}/comparison_report.json"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     splits_dir = Path(args.splits_dir)
@@ -206,6 +215,58 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"Wrote controlled comparison report to {out_path}")
+
+    # Write Markdown comparison file if window == 7200
+    md_path = Path(f"cascn/CASCN_COMPARISON_{args.window}.md") if args.window != 3600 else Path("cascn/CASCN_COMPARISON.md")
+    hours = args.window // 3600
+    cm_s = report["casmotif"]["summary"]
+    cn_s = report["cascn"]["summary"]
+    p_test = report["paired_tests"]["seed_mean_error"]
+
+    md_lines = [
+        f"# Controlled Multi-Seed Comparison: CasMotif vs CasCN (Sina Weibo, {hours}h Window)",
+        "",
+        f"Head-to-head controlled evaluation of **CasMotif** (`pipeline_w/`) against a faithful PyTorch",
+        f"reimplementation of **CasCN** (Chen et al., *Information Diffusion Prediction via Recurrent Cascades Convolution*, IEEE ICDE 2019).",
+        "",
+        "---",
+        "",
+        f"## Results — {hours}-Hour Observation Window (`{args.window}s`, {len(ref_ids):,} identical test cascades)",
+        "",
+        "| Model | Parameters | Val MSLE ($\\log_2$) $\\downarrow$ | Test MSLE ($\\log_2$) $\\downarrow$ | Test MSLE ($\\ln$) $\\downarrow$ | Test MALE ($\\log_2$) $\\downarrow$ | $R^2$ ($\\log_2$) $\\uparrow$ | PCC $\\uparrow$ | MAE (count) $\\downarrow$ | MedAE (count) $\\downarrow$ |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        f"| Mean Baseline | 0 | — | {mean_baseline_metrics['MSLE_log2']:.4f} | {mean_baseline_metrics['MSLE_ln']:.4f} | {mean_baseline_metrics['MALE_log2']:.4f} | {mean_baseline_metrics['R2_log2']:.4f} | — | {mean_baseline_metrics['MAE_count']:.2f} | {mean_baseline_metrics['MedAE_count']:.2f} |",
+    ]
+    for s in args.seeds:
+        cm_m = ours_metrics[f"s{s}"]
+        cn_m = cascn_metrics[f"s{s}"]
+        md_lines.append(f"| CasCN, seed {s} | {cascn_params:,} | — | {cn_m['MSLE_log2']:.4f} | {cn_m['MSLE_ln']:.4f} | {cn_m['MALE_log2']:.4f} | {cn_m['R2_log2']:.4f} | {cn_m['PCC_log2']:.4f} | {cn_m['MAE_count']:.2f} | {cn_m['MedAE_count']:.2f} |")
+    md_lines.append(f"| **CasCN ({len(args.seeds)}-seed mean ± std)** | **{cascn_params:,}** | — | **{cn_s['MSLE_log2']['mean']:.4f} ± {cn_s['MSLE_log2']['std']:.4f}** | **{cn_s['MSLE_ln']['mean']:.4f} ± {cn_s['MSLE_ln']['std']:.4f}** | **{cn_s['MALE_log2']['mean']:.4f} ± {cn_s['MALE_log2']['std']:.4f}** | **{cn_s['R2_log2']['mean']:.4f} ± {cn_s['R2_log2']['std']:.4f}** | **{cn_s['PCC_log2']['mean']:.4f}** | **{cn_s['MAE_count']['mean']:.2f}** | **{cn_s['MedAE_count']['mean']:.2f}** |")
+    
+    for s in args.seeds:
+        cm_m = ours_metrics[f"s{s}"]
+        md_lines.append(f"| CasMotif, seed {s} | {ours_params:,} | — | {cm_m['MSLE_log2']:.4f} | {cm_m['MSLE_ln']:.4f} | {cm_m['MALE_log2']:.4f} | {cm_m['R2_log2']:.4f} | {cm_m['PCC_log2']:.4f} | {cm_m['MAE_count']:.2f} | {cm_m['MedAE_count']:.2f} |")
+    md_lines.append(f"| **CasMotif ({len(args.seeds)}-seed mean ± std)** | **{ours_params:,}** | — | **{cm_s['MSLE_log2']['mean']:.4f} ± {cm_s['MSLE_log2']['std']:.4f}** | **{cm_s['MSLE_ln']['mean']:.4f} ± {cm_s['MSLE_ln']['std']:.4f}** | **{cm_s['MALE_log2']['mean']:.4f} ± {cm_s['MALE_log2']['std']:.4f}** | **{cm_s['R2_log2']['mean']:.4f} ± {cm_s['R2_log2']['std']:.4f}** | **{cm_s['PCC_log2']['mean']:.4f}** | **{cm_s['MAE_count']['mean']:.2f}** | **{cm_s['MedAE_count']['mean']:.2f}** |")
+
+    md_lines.extend([
+        "",
+        "---",
+        "",
+        f"## Statistical Significance (Per-Cascade Paired Tests on {len(ref_ids):,} Test Cascades)",
+        "",
+        "| Metric | Value |",
+        "| :--- | :--- |",
+        f"| **$\\Delta\\text{{MSLE}}_{{\\log_2}}$ (CasMotif $-$ CasCN)** | **{p_test['difference_ours_minus_cascn']:.4f}** |",
+        f"| **Relative MSLE Reduction** | **{p_test['relative_msle_reduction']*100:.2f}%** |",
+        f"| **95% Bootstrap CI** | **[{p_test['ci95_low']:.4f}, {p_test['ci95_high']:.4f}]** |",
+        f"| **Paired $t$-test** | $t = {p_test['paired_t_stat']:.2f}, p = {p_test['paired_t_p']:.4e}$ |",
+        f"| **Wilcoxon signed-rank test** | $p = {p_test['wilcoxon_p']:.4e}$ |",
+        f"| **CasMotif Lower Error on** | **{p_test['ours_better_fraction']*100:.1f}%** of cascades |",
+        "",
+    ])
+
+    md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    print(f"Generated {md_path}")
 
 
 if __name__ == "__main__":

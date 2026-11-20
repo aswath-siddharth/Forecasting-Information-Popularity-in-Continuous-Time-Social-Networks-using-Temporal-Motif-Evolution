@@ -73,13 +73,17 @@ def compute_scaled_directed_laplacian(n, src, dst, alpha=0.95):
     return L_scaled.astype(np.float32)
 
 
-def process_single_cascade(args):
+import argparse
+from pathlib import Path
+
+
+def process_single_cascade(args, obs_window=3600.0, time_interval=600.0):
     cid, y_inc, g = args
     edge_src = g['edge_src']
     edge_dst = g['edge_dst']
     edge_time = g['edge_time']
 
-    # Filter events within observation window t < 3600s (all in cassubts_3600 are <= 3599s)
+    # Filter events within observation window t < obs_window
     # Cap sequence steps at MAX_STEPS (1 root event at t=0 + up to 99 retweet events)
     # Remap node IDs in order of appearance up to MAX_NODES
     node_map = {0: 0}
@@ -90,7 +94,7 @@ def process_single_cascade(args):
     seen_edges = {(0, 0)}
 
     for s, d, t in zip(edge_src, edge_dst, edge_time):
-        if t > OBS_WINDOW:
+        if t > obs_window:
             continue
         if len(u_list) >= MAX_STEPS:
             break
@@ -124,7 +128,7 @@ def process_single_cascade(args):
     m_arr = np.array(m_list, dtype=np.float32)
     t_arr = np.array(t_list, dtype=np.float32)
     # Time interval bin in [0, N_TIME_INTERVAL - 1]
-    bin_arr = np.minimum(np.floor(t_arr / TIME_INTERVAL).astype(np.int16), N_TIME_INTERVAL - 1)
+    bin_arr = np.minimum(np.floor(t_arr / time_interval).astype(np.int16), N_TIME_INTERVAL - 1)
 
     L = compute_scaled_directed_laplacian(n_nodes, u_arr, v_arr)
     y_log2 = np.float32(np.log2(float(y_inc) + 1.0))
@@ -144,48 +148,95 @@ def process_single_cascade(args):
     }
 
 
-def preprocess_split(split_name, in_path, out_path):
-    t0 = time.time()
-    with open(in_path, 'rb') as f:
-        data = pickle.load(f)
+def extract_raw_edges(weibo_txt: Path, wanted_cids: set[str], obs_window: float) -> dict[str, tuple[list[int], list[int], list[float]]]:
+    """Return {cascade_id: (edge_src, edge_dst, edge_time)} for wanted cascades."""
+    edges: dict[str, tuple[list[int], list[int], list[float]]] = {}
+    with open(weibo_txt, 'r', encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) != 5:
+                continue
+            cid = parts[0]
+            if cid not in wanted_cids:
+                continue
+            srcs, dsts, times = [], [], []
+            for item in parts[4].split():
+                if not item:
+                    continue
+                chain, _, t_str = item.rpartition(':')
+                if not chain:
+                    continue
+                nodes = chain.split('/')
+                if any(n == '-1' for n in nodes):
+                    continue
+                try:
+                    t_val = float(t_str)
+                except ValueError:
+                    continue
+                if t_val > obs_window:
+                    continue
+                if len(nodes) > 1:
+                    srcs.append(int(nodes[-2]))
+                    dsts.append(int(nodes[-1]))
+                    times.append(t_val)
+            if len(srcs) > 1:
+                order = np.argsort(times)
+                srcs = [srcs[i] for i in order]
+                dsts = [dsts[i] for i in order]
+                times = [times[i] for i in order]
+            edges[cid] = (srcs, dsts, times)
+    return edges
 
-    cids = data['cascade_id']
-    y_incs = data['y_increment']
-    graphs = data['graphs']
-    n_samples = len(cids)
-    print(f"[{split_name}] Loaded {n_samples} cascades from {in_path}")
 
-    args_iter = list(zip(cids, y_incs, graphs))
-    results = []
-    for idx, arg in enumerate(args_iter):
-        results.append(process_single_cascade(arg))
-        if (idx + 1) % 5000 == 0:
-            print(f"  [{split_name}] Processed {idx + 1}/{n_samples} cascades ({time.time() - t0:.1f}s)")
+def main():
+    parser = argparse.ArgumentParser(description="Extract CasCN graph data aligned to Weibo splits.")
+    parser.add_argument("--input", default="weibo_data/dataset_weibo.txt")
+    parser.add_argument("--splits-dir", default="weibo_data/processed_7200")
+    parser.add_argument("--output-dir", default="weibo_data/cascn_7200")
+    parser.add_argument("--observation-time", type=float, default=7200.0)
+    args = parser.parse_args()
 
-    with open(out_path, 'wb') as f:
-        pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
+    splits_dir = Path(args.splits_dir)
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    obs_window = float(args.observation_time)
+    time_interval = obs_window / N_TIME_INTERVAL
 
-    dt = time.time() - t0
-    avg_nodes = np.mean([r['n_nodes'] for r in results])
-    avg_steps = np.mean([r['n_steps'] for r in results])
-    print(f"[{split_name}] Saved {len(results)} cascades to {out_path} in {dt:.2f}s (avg_nodes={avg_nodes:.1f}, avg_steps={avg_steps:.1f})")
-    return results
+    splits = {}
+    wanted_cids = set()
+    for s in ['train', 'val', 'test']:
+        d = np.load(splits_dir / f"weibo_{s}.npz", allow_pickle=True)
+        cids = [str(c) for c in d['cascade_id'].tolist()]
+        y_incs = d['y_increment'].astype(np.float32)
+        splits[s] = (cids, y_incs)
+        wanted_cids.update(cids)
 
+    print(f"• Loaded splits: train={len(splits['train'][0])}, val={len(splits['val'][0])}, test={len(splits['test'][0])}")
+    print(f"• Extracting cascade edges from {args.input} (window={obs_window}s)...")
+    raw_edges = extract_raw_edges(Path(args.input), wanted_cids, obs_window)
+    print(f"• Extracted edges for {len(raw_edges)}/{len(wanted_cids)} cascades")
 
-if __name__ == '__main__':
-    base_dir = '/Users/priya/Desktop/cascn_implement_in_weibo/data'
-    out_dir = os.path.join(base_dir, 'cascn_preprocessed')
-    os.makedirs(out_dir, exist_ok=True)
+    train_res = None
+    for s in ['train', 'val', 'test']:
+        cids, y_incs = splits[s]
+        results = []
+        t0 = time.time()
+        for idx, (cid, y_inc) in enumerate(zip(cids, y_incs)):
+            srcs, dsts, times = raw_edges.get(cid, ([], [], []))
+            g = {'edge_src': srcs, 'edge_dst': dsts, 'edge_time': times}
+            res = process_single_cascade((cid, y_inc, g), obs_window=obs_window, time_interval=time_interval)
+            results.append(res)
+            if (idx + 1) % 10000 == 0:
+                print(f"  [{s}] Processed {idx + 1}/{len(cids)} cascades ({time.time() - t0:.1f}s)")
 
-    for split in ['train', 'val', 'test']:
-        in_p = os.path.join(base_dir, 'cassubts_3600', f'cassubts_{split}.pkl')
-        out_p = os.path.join(out_dir, f'cascn_{split}.pkl')
-        preprocess_split(split, in_p, out_p)
+        out_p = out_dir / f"cascn_{s}.pkl"
+        with open(out_p, 'wb') as f:
+            pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"• Saved {s} ({len(results)} cascades) -> {out_p} ({time.time() - t0:.1f}s)")
+        if s == 'train':
+            train_res = results
 
-    # Fit Feature Scaler (Time Scaler) strictly on the 29,530 Training cascades ONLY (Protocol #5)
-    with open(os.path.join(out_dir, 'cascn_train.pkl'), 'rb') as f:
-        train_res = pickle.load(f)
-
+    # Fit Feature Scaler (Time Scaler) strictly on the Training cascades ONLY (zero leakage)
     all_train_times = np.concatenate([r['time'] for r in train_res])
     all_train_sizes = np.array([r['n_steps'] for r in train_res], dtype=np.float32)
     scaler_stats = {
@@ -195,6 +246,10 @@ if __name__ == '__main__':
         'size_mean': float(np.mean(all_train_sizes)),
         'size_std': float(np.std(all_train_sizes) + 1e-8),
     }
-    with open(os.path.join(out_dir, 'train_scaler.pkl'), 'wb') as f:
+    with open(out_dir / 'train_scaler.pkl', 'wb') as f:
         pickle.dump(scaler_stats, f)
-    print("Fit Feature Scaler strictly on Train split ONLY (29,530 cascades):", scaler_stats)
+    print("• Fit Feature Scaler strictly on Train split ONLY:", scaler_stats)
+
+
+if __name__ == '__main__':
+    main()
