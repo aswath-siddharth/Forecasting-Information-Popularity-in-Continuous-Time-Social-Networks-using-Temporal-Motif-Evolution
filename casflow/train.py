@@ -193,9 +193,12 @@ def train_seed(seed: int, prepared: dict, out_dir: Path, args: argparse.Namespac
     test_pred_raw = predict_casflow(model, test_loader, device, seed=seed + 2000, samples=args.samples)
     test_pred_log2 = np.log2(np.clip(test_pred_raw, 0.0, None) + 1.0)
     test_metrics = regression_metrics(test_pred_log2, test_true_log2, test_true_raw)
+    elapsed_total = time.perf_counter() - t_start
     test_metrics["best_epoch"] = best_epoch
     test_metrics["best_val_MSLE_log2"] = best_val_msle
     test_metrics["parameters"] = total_params
+    test_metrics["train_time_sec"] = elapsed_total
+    test_metrics["train_time_min"] = elapsed_total / 60.0
 
     # Save outputs
     (run_dir / "casflow_evaluation_report.json").write_text(json.dumps(test_metrics, indent=2), encoding="utf-8")
@@ -210,7 +213,8 @@ def train_seed(seed: int, prepared: dict, out_dir: Path, args: argparse.Namespac
     )
 
     print(
-        f"[Seed {seed} DONE] Test MSLE (log2): {test_metrics['MSLE_log2']:.4f} | "
+        f"[Seed {seed} DONE] Time: {elapsed_total:.1f}s ({elapsed_total/60:.2f} min) | "
+        f"Test MSLE (log2): {test_metrics['MSLE_log2']:.4f} | "
         f"Test MSLE (ln): {test_metrics['MSLE_ln']:.4f} | Test R²: {test_metrics['R2_log2']:.4f} | "
         f"Test MAPE: {test_metrics['MAPE_log2']:.4f}",
         flush=True,
@@ -224,6 +228,7 @@ def main():
     parser.add_argument("--splits-dir", type=Path, default=Path("weibo_data/processed_3600"))
     parser.add_argument("--cache-file", type=Path, default=Path("weibo_data/casflow_prepared_3600.pt"))
     parser.add_argument("--out-dir", type=Path, default=Path("casflow/runs_3600/casflow"))
+    parser.add_argument("--observation-time", type=int, default=3600)
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -245,9 +250,9 @@ def main():
         print(f"Loading cached CasFlow tensors from {args.cache_file}...", flush=True)
         prepared = torch.load(args.cache_file, weights_only=False)
     else:
-        print(f"Preparing CasFlow tensors from {args.weibo_txt} and {args.splits_dir}...", flush=True)
-        splits = load_split_cascades(args.weibo_txt, args.splits_dir, observation_time=3600)
-        prepared = prepare_tensors(splits, observation_time=3600, device=args.device, batch_size=64)
+        print(f"Preparing CasFlow tensors from {args.weibo_txt} and {args.splits_dir} (T_obs={args.observation_time}s)...", flush=True)
+        splits = load_split_cascades(args.weibo_txt, args.splits_dir, observation_time=args.observation_time)
+        prepared = prepare_tensors(splits, observation_time=args.observation_time, device=args.device, batch_size=args.batch_size)
         args.cache_file.parent.mkdir(parents=True, exist_ok=True)
         torch.save(prepared, args.cache_file)
         print(f"Saved cached CasFlow tensors to {args.cache_file}", flush=True)
@@ -258,13 +263,20 @@ def main():
         metrics = train_seed(seed, prepared, args.out_dir, args)
         all_metrics[f"seed_{seed}"] = metrics
 
-    # 3. Compute 3-seed summary
-    msle_vals = [all_metrics[f"seed_{s}"]["MSLE_log2"] for s in args.seeds]
-    r2_vals = [all_metrics[f"seed_{s}"]["R2_log2"] for s in args.seeds]
-    print("\n=======================================================", flush=True)
-    print(f"CasFlow 3-Seed Mean MSLE (log2): {np.mean(msle_vals):.4f} ± {np.std(msle_vals):.4f}", flush=True)
-    print(f"CasFlow 3-Seed Mean R² (log2)  : {np.mean(r2_vals):.4f} ± {np.std(r2_vals):.4f}", flush=True)
-    print("=======================================================\n", flush=True)
+    # 3. Compute multi-seed summary if more than 1 seed
+    if len(args.seeds) > 1:
+        msle_vals = [all_metrics[f"seed_{s}"]["MSLE_log2"] for s in args.seeds]
+        r2_vals = [all_metrics[f"seed_{s}"]["R2_log2"] for s in args.seeds]
+        print("\n=======================================================", flush=True)
+        print(f"CasFlow Multi-Seed Mean MSLE (log2): {np.mean(msle_vals):.4f} ± {np.std(msle_vals):.4f}", flush=True)
+        print(f"CasFlow Multi-Seed Mean R² (log2)  : {np.mean(r2_vals):.4f} ± {np.std(r2_vals):.4f}", flush=True)
+        print("=======================================================\n", flush=True)
+    else:
+        s = args.seeds[0]
+        m = all_metrics[f"seed_{s}"]
+        print("\n=======================================================", flush=True)
+        print(f"CasFlow Seed {s} Test MSLE (log2): {m['MSLE_log2']:.4f} | R²: {m['R2_log2']:.4f} | Time: {m['train_time_min']:.2f} min", flush=True)
+        print("=======================================================\n", flush=True)
 
 
 if __name__ == "__main__":

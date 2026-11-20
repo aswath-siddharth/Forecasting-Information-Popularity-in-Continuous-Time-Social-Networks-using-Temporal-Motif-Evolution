@@ -22,11 +22,13 @@ class Cascade:
 
 
 def load_split_cascades(
-    weibo_txt: Path,
-    splits_dir: Path,
+    weibo_txt: Path | str,
+    splits_dir: Path | str,
     observation_time: int = 3600,
 ) -> dict[str, list[Cascade]]:
     """Loads cascades aligned 1-to-1 to weibo_{train,val,test}.npz."""
+    weibo_txt = Path(weibo_txt)
+    splits_dir = Path(splits_dir)
     split_ids: dict[str, list[str]] = {}
     split_labels: dict[str, np.ndarray] = {}
     for name in ("train", "val", "test"):

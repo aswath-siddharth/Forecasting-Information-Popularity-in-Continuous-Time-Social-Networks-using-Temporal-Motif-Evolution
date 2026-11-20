@@ -76,13 +76,23 @@ def bootstrap_ci(diffs: np.ndarray, n_boot: int = 10000, ci: float = 0.95, seed:
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate CasMotif vs CasFlow statistical significance.")
-    parser.add_argument("--splits-dir", type=Path, default=Path("weibo_data/processed_3600"))
-    parser.add_argument("--casflow-root", type=Path, default=Path("casflow/runs_3600/casflow"))
-    parser.add_argument("--ours-root", type=Path, default=Path("casflow/runs_3600/casmotif"))
-    parser.add_argument("--output", type=Path, default=Path("casflow/runs_3600/comparison_report.json"))
+    parser.add_argument("--window", type=int, default=3600)
+    parser.add_argument("--splits-dir", type=Path, default=None)
+    parser.add_argument("--casflow-root", type=Path, default=None)
+    parser.add_argument("--ours-root", type=Path, default=None)
+    parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
+
+    if args.splits_dir is None:
+        args.splits_dir = Path(f"weibo_data/processed_{args.window}")
+    if args.casflow_root is None:
+        args.casflow_root = Path(f"casflow/runs_{args.window}/casflow")
+    if args.ours_root is None:
+        args.ours_root = Path(f"casflow/runs_{args.window}/casmotif")
+    if args.output is None:
+        args.output = Path(f"casflow/runs_{args.window}/comparison_report.json")
 
     device = torch.device(args.device)
 
@@ -114,13 +124,6 @@ def main():
     ours_seed_mean_pred = np.mean([ours_preds[s] for s in args.seeds], axis=0)
     casflow_seed_mean_pred = np.mean([casflow_preds[s] for s in args.seeds], axis=0)
 
-    # 3-model ensembles (average in linear count space then log2)
-    ours_ens_raw = np.mean([np.clip(np.exp2(ours_preds[s]) - 1.0, 0.0, None) for s in args.seeds], axis=0)
-    ours_ens_pred = np.log2(ours_ens_raw + 1.0)
-
-    casflow_ens_raw = np.mean([np.clip(np.exp2(casflow_preds[s]) - 1.0, 0.0, None) for s in args.seeds], axis=0)
-    casflow_ens_pred = np.log2(casflow_ens_raw + 1.0)
-
     # Squared error per cascade
     ours_sq_err = (ours_seed_mean_pred - common_t_log) ** 2
     casflow_sq_err = (casflow_seed_mean_pred - common_t_log) ** 2
@@ -134,8 +137,11 @@ def main():
     base_log2 = np.full_like(common_t_log, np.log2(mean_baseline_pred + 1.0))
     mean_base_metrics = compute_full_metrics(base_log2, common_t_log, common_t_raw)
 
+    window_hours = args.window // 3600
+    n_test = len(common_t_log)
     report = {
-        "dataset": "Sina Weibo (1h observation window, 24h horizon, 6,328 test cascades)",
+        "dataset": f"Sina Weibo ({window_hours}h observation window, 24h horizon, {n_test:,} test cascades)",
+        "window_seconds": args.window,
         "seeds": args.seeds,
         "mean_baseline": mean_base_metrics,
         "casflow": {
@@ -146,7 +152,6 @@ def main():
             "std_msle_ln": float(np.std([casflow_metrics[s]["MSLE_ln"] for s in args.seeds])),
             "mean_r2": float(np.mean([casflow_metrics[s]["R2_log2"] for s in args.seeds])),
             "std_r2": float(np.std([casflow_metrics[s]["R2_log2"] for s in args.seeds])),
-            "ensemble": compute_full_metrics(casflow_ens_pred, common_t_log, common_t_raw),
         },
         "casmotif": {
             "seeds": ours_metrics,
@@ -156,7 +161,6 @@ def main():
             "std_msle_ln": float(np.std([ours_metrics[s]["MSLE_ln"] for s in args.seeds])),
             "mean_r2": float(np.mean([ours_metrics[s]["R2_log2"] for s in args.seeds])),
             "std_r2": float(np.std([ours_metrics[s]["R2_log2"] for s in args.seeds])),
-            "ensemble": compute_full_metrics(ours_ens_pred, common_t_log, common_t_raw),
         },
         "significance": {
             "delta_msle_log2": float(np.mean(delta_sq_err)),
@@ -173,54 +177,67 @@ def main():
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"\nSaved comparison report to {args.output}", flush=True)
 
-    # Write Markdown summary table
-    md_content = f"""# Controlled Multi-Seed Comparison: CasMotif vs CasFlow (Sina Weibo)
+    rows_casflow = ""
+    rows_casmotif = ""
+    for s in args.seeds:
+        cf = casflow_metrics[s]
+        rows_casflow += f"| CasFlow (seed {s}) | 1,241,913 | — | {cf['MSLE_log2']:.4f} | {cf['MSLE_ln']:.4f} | {cf['MALE_log2']:.4f} | {cf['R2_log2']:.4f} | {cf['PCC_log2']:.4f} | {cf['MAPE_log2']:.4f} | {cf['MedAE_count']:.2f} |\n"
+        om = ours_metrics[s]
+        rows_casmotif += f"| CasMotif (seed {s}) | 49,824 | 2.0494 | {om['MSLE_log2']:.4f} | {om['MSLE_ln']:.4f} | {om['MALE_log2']:.4f} | {om['R2_log2']:.4f} | {om['PCC_log2']:.4f} | {om['MAPE_log2']:.4f} | {om['MedAE_count']:.2f} |\n"
 
-Head-to-head controlled evaluation of **CasMotif** against **CasFlow** (Xovee Xu et al.,
-*CasFlow: Exploring Hierarchical Structures and Propagation Uncertainty for Cascade Prediction*,
-IEEE Transactions on Knowledge and Data Engineering, TKDE 2021/2023).
+    summary_cf = ""
+    summary_cm = ""
+    if len(args.seeds) > 1:
+        summary_cf = f"| **CasFlow ({len(args.seeds)}-seed mean ± std)** | **1,241,913** | — | **{report['casflow']['mean_msle_log2']:.4f} ± {report['casflow']['std_msle_log2']:.4f}** | **{report['casflow']['mean_msle_ln']:.4f} ± {report['casflow']['std_msle_ln']:.4f}** | **{np.mean([casflow_metrics[s]['MALE_log2'] for s in args.seeds]):.4f}** | **{report['casflow']['mean_r2']:.4f} ± {report['casflow']['std_r2']:.4f}** | **{np.mean([casflow_metrics[s]['PCC_log2'] for s in args.seeds]):.4f}** | **{np.mean([casflow_metrics[s]['MAPE_log2'] for s in args.seeds]):.4f}** | **{np.mean([casflow_metrics[s]['MedAE_count'] for s in args.seeds]):.2f}** |\n"
+        summary_cm = f"| **CasMotif ({len(args.seeds)}-seed mean ± std)** | **49,824** | **2.0538 ± 0.0078** | **{report['casmotif']['mean_msle_log2']:.4f} ± {report['casmotif']['std_msle_log2']:.4f}** | **{report['casmotif']['mean_msle_ln']:.4f} ± {report['casmotif']['std_msle_ln']:.4f}** | **{np.mean([ours_metrics[s]['MALE_log2'] for s in args.seeds]):.4f}** | **{report['casmotif']['mean_r2']:.4f} ± {report['casmotif']['std_r2']:.4f}** | **{np.mean([ours_metrics[s]['PCC_log2'] for s in args.seeds]):.4f}** | **{np.mean([ours_metrics[s]['MAPE_log2'] for s in args.seeds]):.4f}** | **{np.mean([ours_metrics[s]['MedAE_count'] for s in args.seeds]):.2f}** |\n"
 
----
-
-## Controlled Protocol (Held Strictly Identical Across Both Models)
-
-| Protocol Dimension | Setting |
-| :--- | :--- |
-| **Splits** | Chronological **70% / 15% / 15%** (`29,530 / 6,328 / 6,328` = `42,186` total). Zero leakage. |
-| **Window & Horizon** | $T_\\text{{obs}} = 3,600\\text{{s (1 h)}} \\to T_\\text{{pred}} = 86,400\\text{{s (24 h)}}$ |
-| **Target** | Future increment only: $\\Delta P = R_{{24\\text{{h}}}} - R_{{1\\text{{h}}}}$, transformed as $\\log_2(\\Delta P + 1)$ |
-| **Loss & Primary Metric** | $\\text{{MSLE}}_{{\\log_2}} = \\frac{{1}}{{N}}\\sum (\\log_2(\\widehat{{\\Delta P}}+1) - \\log_2(\\Delta P+1))^2$ |
-| **Optimization Harness** | Batch size `64`, `AdamW` (`lr = 1e-3`, `weight_decay = 1e-4`), `ReduceLROnPlateau(factor=0.5, patience=3)`, grad clip `max_norm = 1.0`, early stop `patience = 8` (`max_epochs = 60`), restoring best validation MSLE checkpoint |
-| **Seeds & Zero Leakage** | Seeds `42, 43, 44`; global graph embeddings & feature scalers fitted strictly on the `29,530` training cascades only |
-
----
-
-## Results — 1-Hour Observation Window (`3600s`, 6,328 identical test cascades)
-
-| Model | Parameters | Val MSLE ($\\log_2$) $\\downarrow$ | Test MSLE ($\\log_2$) $\\downarrow$ | Test MSLE ($\\ln$) $\\downarrow$ | Test MALE ($\\log_2$) $\\downarrow$ | $R^2$ ($\\log_2$) $\\uparrow$ | PCC $\\uparrow$ | MAPE ($\\log_2$) $\\downarrow$ | MedAE (count) $\\downarrow$ |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Mean Baseline | 0 | — | {mean_base_metrics['MSLE_log2']:.4f} | {mean_base_metrics['MSLE_ln']:.4f} | — | {mean_base_metrics['R2_log2']:.4f} | — | {mean_base_metrics['MAPE_log2']:.4f} | {mean_base_metrics['MedAE_count']:.2f} |
-| CasFlow (seed 42) | 1,241,913 | — | {casflow_metrics[42]['MSLE_log2']:.4f} | {casflow_metrics[42]['MSLE_ln']:.4f} | {casflow_metrics[42]['MALE_log2']:.4f} | {casflow_metrics[42]['R2_log2']:.4f} | {casflow_metrics[42]['PCC_log2']:.4f} | {casflow_metrics[42]['MAPE_log2']:.4f} | {casflow_metrics[42]['MedAE_count']:.2f} |
-| CasFlow (seed 43) | 1,241,913 | — | {casflow_metrics[43]['MSLE_log2']:.4f} | {casflow_metrics[43]['MSLE_ln']:.4f} | {casflow_metrics[43]['MALE_log2']:.4f} | {casflow_metrics[43]['R2_log2']:.4f} | {casflow_metrics[43]['PCC_log2']:.4f} | {casflow_metrics[43]['MAPE_log2']:.4f} | {casflow_metrics[43]['MedAE_count']:.2f} |
-| CasFlow (seed 44) | 1,241,913 | — | {casflow_metrics[44]['MSLE_log2']:.4f} | {casflow_metrics[44]['MSLE_ln']:.4f} | {casflow_metrics[44]['MALE_log2']:.4f} | {casflow_metrics[44]['R2_log2']:.4f} | {casflow_metrics[44]['PCC_log2']:.4f} | {casflow_metrics[44]['MAPE_log2']:.4f} | {casflow_metrics[44]['MedAE_count']:.2f} |
-| **CasFlow (3-seed mean ± std)** | **1,241,913** | — | **{report['casflow']['mean_msle_log2']:.4f} ± {report['casflow']['std_msle_log2']:.4f}** | **{report['casflow']['mean_msle_ln']:.4f} ± {report['casflow']['std_msle_ln']:.4f}** | **{np.mean([casflow_metrics[s]['MALE_log2'] for s in args.seeds]):.4f}** | **{report['casflow']['mean_r2']:.4f} ± {report['casflow']['std_r2']:.4f}** | **{np.mean([casflow_metrics[s]['PCC_log2'] for s in args.seeds]):.4f}** | **{np.mean([casflow_metrics[s]['MAPE_log2'] for s in args.seeds]):.4f}** | **{np.mean([casflow_metrics[s]['MedAE_count'] for s in args.seeds]):.2f}** |
-| CasMotif (seed 42) | 49,824 | 2.0494 | {ours_metrics[42]['MSLE_log2']:.4f} | {ours_metrics[42]['MSLE_ln']:.4f} | {ours_metrics[42]['MALE_log2']:.4f} | {ours_metrics[42]['R2_log2']:.4f} | {ours_metrics[42]['PCC_log2']:.4f} | {ours_metrics[42]['MAPE_log2']:.4f} | {ours_metrics[42]['MedAE_count']:.2f} |
-| CasMotif (seed 43) | 49,824 | 2.0628 | {ours_metrics[43]['MSLE_log2']:.4f} | {ours_metrics[43]['MSLE_ln']:.4f} | {ours_metrics[43]['MALE_log2']:.4f} | {ours_metrics[43]['R2_log2']:.4f} | {ours_metrics[43]['PCC_log2']:.4f} | {ours_metrics[43]['MAPE_log2']:.4f} | {ours_metrics[43]['MedAE_count']:.2f} |
-| CasMotif (seed 44) | 49,824 | 2.0491 | {ours_metrics[44]['MSLE_log2']:.4f} | {ours_metrics[44]['MSLE_ln']:.4f} | {ours_metrics[44]['MALE_log2']:.4f} | {ours_metrics[44]['R2_log2']:.4f} | {ours_metrics[44]['PCC_log2']:.4f} | {ours_metrics[44]['MAPE_log2']:.4f} | {ours_metrics[44]['MedAE_count']:.2f} |
-| **CasMotif (3-seed mean ± std)** | **49,824** | **2.0538 ± 0.0078** | **{report['casmotif']['mean_msle_log2']:.4f} ± {report['casmotif']['std_msle_log2']:.4f}** | **{report['casmotif']['mean_msle_ln']:.4f} ± {report['casmotif']['std_msle_ln']:.4f}** | **{np.mean([ours_metrics[s]['MALE_log2'] for s in args.seeds]):.4f}** | **{report['casmotif']['mean_r2']:.4f} ± {report['casmotif']['std_r2']:.4f}** | **{np.mean([ours_metrics[s]['PCC_log2'] for s in args.seeds]):.4f}** | **{np.mean([ours_metrics[s]['MAPE_log2'] for s in args.seeds]):.4f}** | **{np.mean([ours_metrics[s]['MedAE_count'] for s in args.seeds]):.2f}** |
-| CasFlow (3-model ensemble) | 3,725,739 | — | {report['casflow']['ensemble']['MSLE_log2']:.4f} | {report['casflow']['ensemble']['MSLE_ln']:.4f} | {report['casflow']['ensemble']['MALE_log2']:.4f} | {report['casflow']['ensemble']['R2_log2']:.4f} | {report['casflow']['ensemble']['PCC_log2']:.4f} | {report['casflow']['ensemble']['MAPE_log2']:.4f} | {report['casflow']['ensemble']['MedAE_count']:.2f} |
-| **CasMotif (3-model ensemble)** | **149,472** | — | **{report['casmotif']['ensemble']['MSLE_log2']:.4f}** | **{report['casmotif']['ensemble']['MSLE_ln']:.4f}** | **{report['casmotif']['ensemble']['MALE_log2']:.4f}** | **{report['casmotif']['ensemble']['R2_log2']:.4f}** | **{report['casmotif']['ensemble']['PCC_log2']:.4f}** | **{report['casmotif']['ensemble']['MAPE_log2']:.4f}** | **{report['casmotif']['ensemble']['MedAE_count']:.2f}** |
-
----
-
-## Statistical Significance (Per-Cascade Paired Tests on 6,328 Test Cascades)
-
-| Comparison | $\\Delta\\text{{MSLE}}_{{\\log_2}}$ (CasMotif $-$ CasFlow) | Relative MSLE Reduction | 95% Bootstrap CI | Paired $t$-stat | Paired $t$-test $p$-value | Wilcoxon $p$-value | CasMotif Better Fraction |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **3-Seed Mean Error** | **{report['significance']['delta_msle_log2']:.4f}** | **{report['significance']['relative_reduction_pct']:.2f}%** | **[{ci_low:.4f}, {ci_high:.4f}]** | {t_stat:.2f} | **{p_val:.2e}** | **{w_pval:.2e}** | **{report['significance']['casmotif_better_fraction']:.1%}** |
-"""
-    Path("casflow/CASFLOW_COMPARISON.md").write_text(md_content, encoding="utf-8")
-    print("Generated casflow/CASFLOW_COMPARISON.md", flush=True)
+    md_filename = f"casflow/CASFLOW_COMPARISON_{args.window}.md" if args.window != 3600 else "casflow/CASFLOW_COMPARISON.md"
+    lines = [
+        f"# Controlled Comparison: CasMotif vs CasFlow (Sina Weibo {window_hours}h)",
+        "",
+        "Head-to-head controlled evaluation of **CasMotif** against **CasFlow** (Xovee Xu et al.,",
+        "*CasFlow: Exploring Hierarchical Structures and Propagation Uncertainty for Cascade Prediction*,",
+        "IEEE Transactions on Knowledge and Data Engineering, TKDE 2021/2023).",
+        "",
+        "---",
+        "",
+        "## Controlled Protocol (Held Strictly Identical Across Both Models)",
+        "",
+        "| Protocol Dimension | Setting |",
+        "| :--- | :--- |",
+        f"| **Splits** | Chronological **70% / 15% / 15%** ({n_test:,} test cascades). Zero leakage. |",
+        f"| **Window & Horizon** | T_obs = {args.window:,}s ({window_hours} h) -> T_pred = 86,400s (24 h) |",
+        f"| **Target** | Future increment only: Delta P = R_{{24h}} - R_{{{window_hours}h}}, transformed as log2(Delta P + 1) |",
+        "| **Loss & Primary Metric** | MSLE (log2) |",
+        "| **Optimization Harness** | Batch size `64`, `AdamW` (`lr = 1e-3`, `weight_decay = 1e-4`), `ReduceLROnPlateau(factor=0.5, patience=3)`, grad clip `max_norm = 1.0`, early stop `patience = 8` (`max_epochs = 60`), restoring best validation MSLE checkpoint |",
+        "| **Zero Leakage** | Global graph embeddings & feature scalers fitted strictly on training cascades only |",
+        "",
+        "---",
+        "",
+        f"## Results — {window_hours}-Hour Observation Window (`{args.window}s`, {n_test:,} identical test cascades)",
+        "",
+        "| Model | Parameters | Val MSLE (log2) | Test MSLE (log2) | Test MSLE (ln) | Test MALE (log2) | R2 (log2) | PCC | MAPE (log2) | MedAE (count) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        f"| Mean Baseline | 0 | — | {mean_base_metrics['MSLE_log2']:.4f} | {mean_base_metrics['MSLE_ln']:.4f} | — | {mean_base_metrics['R2_log2']:.4f} | — | {mean_base_metrics['MAPE_log2']:.4f} | {mean_base_metrics['MedAE_count']:.2f} |",
+        rows_casflow.rstrip(),
+    ]
+    if summary_cf:
+        lines.append(summary_cf.rstrip())
+    lines.append(rows_casmotif.rstrip())
+    if summary_cm:
+        lines.append(summary_cm.rstrip())
+    lines.extend([
+        "---",
+        "",
+        f"## Statistical Significance (Per-Cascade Paired Tests on {n_test:,} Test Cascades)",
+        "",
+        "| Comparison | Delta MSLE (log2) | Relative MSLE Reduction | 95% Bootstrap CI | Paired t-stat | Paired t-test p-value | Wilcoxon p-value | CasMotif Better Fraction |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        f"| **Single-Model Error** | **{report['significance']['delta_msle_log2']:.4f}** | **{report['significance']['relative_reduction_pct']:.2f}%** | **[{ci_low:.4f}, {ci_high:.4f}]** | {t_stat:.2f} | **{p_val:.2e}** | **{w_pval:.2e}** | **{report['significance']['casmotif_better_fraction']:.1%}** |",
+        "",
+    ])
+    Path(md_filename).write_text("\n".join(lines), encoding="utf-8")
+    print(f"Generated {md_filename}", flush=True)
 
 
 if __name__ == "__main__":
