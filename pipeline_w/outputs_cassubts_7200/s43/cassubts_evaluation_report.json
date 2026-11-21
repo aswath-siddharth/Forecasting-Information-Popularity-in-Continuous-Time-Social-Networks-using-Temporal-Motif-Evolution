@@ -1,0 +1,38 @@
+{
+  "model": "CasSubTS (reimplementation from Sci Rep 15:6801, 2025 \u2014 no official code released)",
+  "setting": {
+    "observation_window_seconds": 7200,
+    "splits": "identical to pipeline_w/train_weibo.py (chronological 70/15/15)",
+    "target": "log2(increment+1), MSE loss \u2014 same as our model",
+    "n_subgraphs": 6,
+    "warm_started_from_checkpoint": false,
+    "prior_epochs_before_warm_start": 0,
+    "training": {
+      "seed": 43,
+      "scheduler": "plateau",
+      "ema_decay": 0.0,
+      "epochs": 40,
+      "early_stop": 8,
+      "lr": 0.002
+    }
+  },
+  "data": {
+    "train": 35402,
+    "val": 7586,
+    "test": 7587
+  },
+  "metrics": {
+    "MSLE_log2": 1.8865511630787508,
+    "MSLE_ln": 0.9063991922120741,
+    "RMSLE_log2": 1.3735178058834006,
+    "MAE_count": 50.056093592949296,
+    "RMSE_count": 565.9336203333834,
+    "MedAE_count": 7.166759676261474,
+    "R2_log2": 0.623069099399046,
+    "PCC_log2": 0.7893632017712329,
+    "n_samples": 7587,
+    "best_val_MSLE_log2": 1.932172067526008,
+    "train_time_sec": 1268.5151562690735,
+    "train_time_min": 21.141919271151224
+  }
+}

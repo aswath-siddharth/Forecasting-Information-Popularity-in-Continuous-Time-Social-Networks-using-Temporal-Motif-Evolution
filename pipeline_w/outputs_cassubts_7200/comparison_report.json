@@ -1,0 +1,15 @@
+{
+  "window_seconds": 7200,
+  "n_test_cascades": 7587,
+  "msle_ours": 1.7896093130111694,
+  "msle_cassubts": 1.8586843013763428,
+  "difference": -0.0690750852227211,
+  "relative_msle_reduction": 0.03716337858668295,
+  "ci95_low": -0.10329603422433138,
+  "ci95_high": -0.03631734484806657,
+  "paired_t_stat": -3.9948788918537033,
+  "paired_t_p": 6.533934241945053e-05,
+  "wilcoxon_p": 0.0025557178675307845,
+  "ours_better_fraction": 0.5110056675892974,
+  "significant_at_05": true
+}
