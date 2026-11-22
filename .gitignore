@@ -80,3 +80,6 @@ weibo_data/
 # Temporary scratch and debug files
 scratch/
 
+# Cascades benchmark datasets (Parquet format)
+cascades/
+
