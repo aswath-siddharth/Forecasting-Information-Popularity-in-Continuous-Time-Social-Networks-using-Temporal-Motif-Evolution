@@ -210,8 +210,8 @@ def train_casmotif(
             "elapsed_seconds": ep_duration,
         })
 
-        if epoch % 5 == 0 or val_msle < best_val_msle - 1e-5:
-            print(f"[CasMotif s={seed}] ep {epoch:02d}/{epochs:02d} | train_MSLE={tr_msle:.4f} | val_MSLE={val_msle:.4f} | lr={curr_lr:.2e} ({ep_duration:.1f}s)", flush=True)
+        is_best = " *" if val_msle < best_val_msle - 1e-5 else ""
+        print(f"[CasMotif s={seed}] ep {epoch:02d}/{epochs:02d} | train_MSLE={tr_msle:.4f} | val_MSLE={val_msle:.4f}{is_best} | lr={curr_lr:.2e} ({ep_duration:.1f}s)", flush=True)
 
         if val_msle < best_val_msle - 1e-5:
             best_val_msle = val_msle
