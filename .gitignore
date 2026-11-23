@@ -82,4 +82,5 @@ scratch/
 
 # Cascades benchmark datasets (Parquet format)
 cascades/
+twitter_data/
 
