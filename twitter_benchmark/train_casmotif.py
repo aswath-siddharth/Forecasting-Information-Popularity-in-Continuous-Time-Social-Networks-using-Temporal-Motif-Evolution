@@ -148,12 +148,10 @@ def train_casmotif(
     ds_test = TwitterCascadeDataset(data_dir / "twitter_test.npz", scaler=scaler)
 
     train_sampler = BucketedBatchSampler(ds_train.lengths, batch_size=batch_size, shuffle=True)
-    val_sampler = BucketedBatchSampler(ds_val.lengths, batch_size=batch_size, shuffle=False)
-    test_sampler = BucketedBatchSampler(ds_test.lengths, batch_size=batch_size, shuffle=False)
 
     train_loader = DataLoader(ds_train, batch_sampler=train_sampler, collate_fn=collate_variable_length)
-    val_loader = DataLoader(ds_val, batch_sampler=val_sampler, collate_fn=collate_variable_length)
-    test_loader = DataLoader(ds_test, batch_sampler=test_sampler, collate_fn=collate_variable_length)
+    val_loader = DataLoader(ds_val, batch_size=batch_size, shuffle=False, collate_fn=collate_variable_length)
+    test_loader = DataLoader(ds_test, batch_size=batch_size, shuffle=False, collate_fn=collate_variable_length)
 
     mean_target = float(ds_train.y_log.mean())
     model = CascadeAttentionGRURegressor(input_dim=15, hidden_size=64, attention_dim=64, dropout=0.3).to(device)
