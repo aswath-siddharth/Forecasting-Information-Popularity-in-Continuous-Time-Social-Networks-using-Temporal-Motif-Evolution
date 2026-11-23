@@ -1,9 +1,11 @@
 """Train CasCN on Twitter dataset under the Daily Benchmark Protocol.
 
+Supports CLI flags to switch observation windows (e.g. 1 day or 2 days).
+
 Protocol:
-- Observation Window: 1 day (86,400 seconds)
-- Prediction Horizon: 15 days (1,296,000 seconds)
-- Target: Future increment only: Delta P = R_15d - R_1d (log2(Delta P + 1))
+- Observation Window: 1 day (86,400s) or 2 days (172,800s) via --obs-days
+- Prediction Horizon: 15 days (1,296,000s) via --horizon-days
+- Target: Future increment only: Delta P = R_15d - R_obs (evaluated as log2(Delta P + 1))
 - Filtering: 10 <= N_obs <= 1,000, no hour-of-day filter
 - Split: Strictly chronological 70% Train / 15% Val / 15% Test
 - Feature Scaler: Fit strictly on Train split ONLY (zero data snooping)
@@ -38,10 +40,7 @@ except ImportError:
 
 MAX_NODES = 100
 MAX_STEPS = 100
-OBS_WINDOW = 86400.0
-HORIZON_WINDOW = 15 * 86400.0
 N_TIME_INTERVAL = 6
-TIME_INTERVAL = OBS_WINDOW / N_TIME_INTERVAL  # 14,400s (4 hours per bin)
 
 
 def set_seed(seed: int) -> None:
@@ -52,13 +51,21 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def extract_twitter_cascn_data(parquet_path: Path, out_dir: Path):
+def extract_twitter_cascn_data(
+    parquet_path: Path,
+    out_dir: Path,
+    obs_window: float,
+    horizon_window: float,
+    n_time_interval: int = 6,
+):
     """Extracts, filters, splits, and computes Laplacians for Twitter cascades."""
     out_dir.mkdir(parents=True, exist_ok=True)
     train_pkl = out_dir / "cascn_train.pkl"
     val_pkl = out_dir / "cascn_val.pkl"
     test_pkl = out_dir / "cascn_test.pkl"
     scaler_pkl = out_dir / "train_scaler.pkl"
+
+    time_interval = obs_window / n_time_interval
 
     if train_pkl.exists() and val_pkl.exists() and test_pkl.exists() and scaler_pkl.exists():
         print(f"• Loading preprocessed Twitter CasCN data from {out_dir}...", flush=True)
@@ -72,7 +79,7 @@ def extract_twitter_cascn_data(parquet_path: Path, out_dir: Path):
             scaler = pickle.load(f)
         return train_data, val_data, test_data, scaler
 
-    print(f"• Reading {parquet_path} for Twitter cascade extraction...", flush=True)
+    print(f"• Reading {parquet_path} for Twitter cascade extraction (T_obs={obs_window:.0f}s, T_pred={horizon_window:.0f}s)...", flush=True)
     t0 = time.time()
     table = pq.read_table(parquet_path, columns=["cascade_id", "published", "events"])
     pydict = table.to_pydict()
@@ -90,9 +97,9 @@ def extract_twitter_cascn_data(parquet_path: Path, out_dir: Path):
         n_horizon = 0
         for ev in ev_list:
             t = ev["elapsed"]
-            if t < HORIZON_WINDOW:
+            if t < horizon_window:
                 n_horizon += 1
-            if t < OBS_WINDOW:
+            if t < obs_window:
                 n_obs += 1
                 path = ev["path"]
                 if len(path) > 1 and path[-1] != path[-2]:
@@ -175,7 +182,7 @@ def extract_twitter_cascn_data(parquet_path: Path, out_dir: Path):
             v_arr = np.array(v_list, dtype=np.int16)
             m_arr = np.array(m_list, dtype=np.float32)
             t_arr = np.array(t_list, dtype=np.float32)
-            bin_arr = np.minimum(np.floor(t_arr / TIME_INTERVAL).astype(np.int16), N_TIME_INTERVAL - 1)
+            bin_arr = np.minimum(np.floor(t_arr / time_interval).astype(np.int16), n_time_interval - 1)
 
             L = compute_scaled_directed_laplacian(n_nodes, u_arr, v_arr)
             y_log2 = np.float32(np.log2(y_inc + 1.0))
@@ -382,10 +389,18 @@ def train_single_seed_twitter(
 
 def main():
     parser = argparse.ArgumentParser(description="Train CasCN baseline on Twitter under the Daily Protocol.")
-    parser.add_argument("--parquet", type=Path, default=Path("cascades/twitter.parquet"))
-    parser.add_argument("--cache-dir", type=Path, default=Path("twitter_data/cascn_1d"))
-    parser.add_argument("--out-dir", type=Path, default=Path("cascn/runs_twitter_1d"))
-    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
+    parser.add_argument("--parquet", type=Path, default=Path("cascades/twitter.parquet"),
+                        help="Path to twitter.parquet dataset.")
+    parser.add_argument("--obs-days", type=int, choices=[1, 2], default=1,
+                        help="Observation window in days (1 or 2). Default: 1.")
+    parser.add_argument("--horizon-days", type=int, default=15,
+                        help="Prediction horizon in days. Default: 15.")
+    parser.add_argument("--cache-dir", type=Path, default=None,
+                        help="Cache directory for extracted split data. Defaults to twitter_data/cascn_{obs_days}d.")
+    parser.add_argument("--out-dir", type=Path, default=None,
+                        help="Output directory for runs and reports. Defaults to cascn/runs_twitter_{obs_days}d.")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44],
+                        help="Random seeds to evaluate across. Default: 42 43 44.")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
@@ -395,13 +410,34 @@ def main():
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
+    obs_window = float(args.obs_days * 86400.0)
+    horizon_window = float(args.horizon_days * 86400.0)
+
+    if args.cache_dir is None:
+        args.cache_dir = Path(f"twitter_data/cascn_{args.obs_days}d")
+    if args.out_dir is None:
+        args.out_dir = Path(f"cascn/runs_twitter_{args.obs_days}d")
+
     args.out_dir.mkdir(parents=True, exist_ok=True)
     t_global_start = time.perf_counter()
 
-    # 1. Prepare / Load Data
-    train_data, val_data, test_data, scaler = extract_twitter_cascn_data(args.parquet, args.cache_dir)
+    print("=" * 70, flush=True)
+    print(f" CasCN Twitter Benchmark: {args.obs_days}-Day Observation Window -> {args.horizon_days}-Day Horizon", flush=True)
+    print(f" Cache Directory: {args.cache_dir}", flush=True)
+    print(f" Output Directory: {args.out_dir}", flush=True)
+    print(f" Seeds: {args.seeds} | Device: {args.device}", flush=True)
+    print("=" * 70, flush=True)
 
-    # 2. Train across 3 seeds (42, 43, 44)
+    # 1. Prepare / Load Data
+    train_data, val_data, test_data, scaler = extract_twitter_cascn_data(
+        parquet_path=args.parquet,
+        out_dir=args.cache_dir,
+        obs_window=obs_window,
+        horizon_window=horizon_window,
+        n_time_interval=N_TIME_INTERVAL,
+    )
+
+    # 2. Train across seeds (42, 43, 44)
     all_metrics = {}
     seed_times = {}
 
@@ -430,7 +466,7 @@ def main():
     total_training_sec = time.perf_counter() - t_global_start
     total_training_min = total_training_sec / 60.0
 
-    # 3. Compute 3-seed statistics
+    # 3. Compute multi-seed statistics
     msle_log2_list = [all_metrics[f"s{s}"]["MSLE_log2"] for s in args.seeds]
     msle_ln_list = [all_metrics[f"s{s}"]["MSLE_ln"] for s in args.seeds]
     r2_list = [all_metrics[f"s{s}"]["R2_log2"] for s in args.seeds]
@@ -442,8 +478,10 @@ def main():
 
     summary = {
         "dataset": "Twitter",
-        "protocol": "Daily (T_obs = 1d / 86400s -> T_pred = 15d / 1296000s)",
-        "target": "Future Increment Delta P = R_15d - R_1d",
+        "obs_days": args.obs_days,
+        "horizon_days": args.horizon_days,
+        "protocol": f"Daily (T_obs = {args.obs_days}d / {int(obs_window)}s -> T_pred = {args.horizon_days}d / {int(horizon_window)}s)",
+        "target": f"Future Increment Delta P = R_{args.horizon_days}d - R_{args.obs_days}d",
         "split_counts": {
             "train": len(train_data),
             "val": len(val_data),
@@ -475,9 +513,9 @@ def main():
         json.dump(summary, f, indent=2)
 
     print("\n" + "=" * 70, flush=True)
-    print("                 CASCN TWITTER 3-SEED BENCHMARK RESULTS", flush=True)
+    print(f"        CASCN TWITTER {args.obs_days}-DAY BENCHMARK RESULTS", flush=True)
     print("=" * 70, flush=True)
-    print(f"Dataset: Twitter (T_obs = 1d / 86400s -> T_pred = 15d / 1296000s)")
+    print(f"Dataset: Twitter (T_obs = {args.obs_days}d / {int(obs_window)}s -> T_pred = {args.horizon_days}d / {int(horizon_window)}s)")
     print(f"Splits : Train = {len(train_data):,}, Val = {len(val_data):,}, Test = {len(test_data):,}")
     print(f"Params : {summary['parameters']:,}")
     print("-" * 70)
