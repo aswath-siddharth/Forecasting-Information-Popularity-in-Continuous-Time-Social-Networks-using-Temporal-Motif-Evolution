@@ -1,0 +1,47 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "Twitter Cascades (cascades/twitter.parquet)",
+  "observation_window_seconds": 86400,
+  "observation_window_days": 1.0,
+  "prediction_horizon_days": 15,
+  "target": "Future Increment (R_15d - R_obs)",
+  "best_epoch": 3,
+  "best_val_msle": 5.930867519973698,
+  "test_metrics": {
+    "MSLE_log2": 6.520886632452372,
+    "RMSLE_log2": 2.5536026770921847,
+    "MSLE_ln": 3.1329796359806528,
+    "R2_log2": -1.7633442143356057,
+    "PCC_log2": 0.10212507369379215,
+    "MAPE": 874.6976634646279,
+    "MAE_count": 15.109037349000248,
+    "MedAE_count": 2.7176039413240547,
+    "n_samples": 2951
+  },
+  "naive_baseline_metrics": {
+    "MSLE_log2": 9.514632857645873,
+    "RMSLE_log2": 3.0845798510730553,
+    "MSLE_ln": 4.571334032781109,
+    "R2_log2": -3.031998582501841,
+    "PCC_log2": 0.0,
+    "MAPE": 780.3140090797517,
+    "MAE_count": 12.094885551667096,
+    "MedAE_count": 10.60794137827849,
+    "n_samples": 2951
+  },
+  "hyperparameters": {
+    "batch_size": 64,
+    "optimizer": "AdamW",
+    "weight_decay": 0.0001,
+    "initial_lr": 0.001,
+    "early_stopping_patience": 8,
+    "lr_plateau_patience": 3,
+    "max_grad_norm": 1.0,
+    "embedding_dim": 50,
+    "hidden_gru": 32,
+    "walk_length": 10,
+    "n_walks": 32,
+    "vocab_size": 142734,
+    "seed": 42
+  }
+}

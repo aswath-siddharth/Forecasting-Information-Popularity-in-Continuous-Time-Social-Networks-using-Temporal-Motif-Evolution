@@ -83,3 +83,8 @@ scratch/
 # Cascades benchmark datasets (Parquet format)
 cascades/
 
+# Twitter processed data & cloned upstream repo
+data_twitter/
+deepcas_repo/
+
+
