@@ -11,7 +11,7 @@ from pathlib import Path
 def main() -> None:
     p = argparse.ArgumentParser(description="Run CasMotif on Reddit benchmark across windows and seeds.")
     p.add_argument("--cache-dir", default="reddit_benchmark/cache")
-    p.add_argument("--windows", type=int, nargs="+", default=[3600, 900])
+    p.add_argument("--windows", type=int, nargs="+", default=[3600, 7200], help="Observation windows in seconds (default: 3600 7200).")
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--early-stop", type=int, default=8)

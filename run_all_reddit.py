@@ -13,14 +13,14 @@ Models supported:
   6. CasMotif    (casmotif-all-benchmarks)
 
 Usage:
-  # One command to run all 6 models across 3 seeds (42, 43, 44) on 1h (3600s) and 15m (900s):
+  # One command to run all 6 models across 3 seeds (42, 43, 44) on 1h (3600s) and 2h (7200s):
   python run_all_reddit.py
 
   # Quick test slice (e.g. 200 cascades) across all models:
   python run_all_reddit.py --max-cascades 200 --epochs 2
 
   # Specific window or models:
-  python run_all_reddit.py --windows 3600 --models deephawkes casmotif
+  python run_all_reddit.py --windows 3600 7200 --models deephawkes casmotif
 """
 
 from __future__ import annotations
@@ -169,7 +169,10 @@ def print_summary_table(summary: dict) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Run all cascade prediction models on the Reddit dataset.")
-    p.add_argument("--windows", type=int, nargs="+", default=[3600, 900], help="Observation windows in seconds (default: 3600 900).")
+    p.add_argument(
+        "--windows", type=int, nargs="+", default=[3600, 7200],
+        help="Observation windows in seconds (default: 3600 7200, representing 1h and 2h windows with 24h horizon)."
+    )
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44], help="Random seeds (default: 42 43 44).")
     p.add_argument(
         "--models", type=str, nargs="+",
@@ -201,6 +204,27 @@ def main() -> None:
 
     try:
         if not args.summary_only:
+            # Pre-check: Ensure aligned Reddit splits exist for each requested window
+            cache_root = Path("reddit_benchmark/cache")
+            for w in args.windows:
+                cm_test = cache_root / f"casmotif_{w}" / "reddit_test.npz"
+                dh_test = cache_root / f"deephawkes_{w}" / "deephawkes_test.npz"
+                if not cm_test.exists() or not dh_test.exists():
+                    print(f"\n• Aligned Reddit cache for {w}s not found. Building aligned splits...", flush=True)
+                    switch_branch("deephawkes-all-benchmarks")
+                    parse_cmd = [
+                        py, "-m", "reddit_benchmark.parser",
+                        "--data-dir", "data",
+                        "--cache-root", str(cache_root),
+                        "--observation-time", str(w),
+                        "--workers", "8",
+                    ]
+                    if args.max_cascades > 0:
+                        parse_cmd += ["--max-files", "100"]
+                    p_res = subprocess.run(parse_cmd)
+                    if p_res.returncode != 0:
+                        print(f"WARNING: Parser for window {w} returned code {p_res.returncode}", file=sys.stderr)
+
             for m_key in args.models:
                 cfg = MODEL_CONFIGS[m_key]
                 print(f"\n{'#' * 92}")
