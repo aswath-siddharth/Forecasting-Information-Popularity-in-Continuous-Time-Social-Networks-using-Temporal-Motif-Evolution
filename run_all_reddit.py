@@ -185,6 +185,7 @@ def main() -> None:
     p.add_argument("--device", default="cuda", help="Execution device (default: cuda).")
     p.add_argument("--max-cascades", type=int, default=0, help="Optional cascade count cap for quick testing (default: 0 = all).")
     p.add_argument("--force", action="store_true", help="Re-run even if checkpoints and reports already exist.")
+    p.add_argument("--commit-results", action="store_true", help="Automatically commit generated JSON evaluation reports to each model branch.")
     p.add_argument("--summary-only", action="store_true", help="Skip model training and display aggregated leaderboard.")
     args = p.parse_args()
 
@@ -252,6 +253,30 @@ def main() -> None:
                 res = subprocess.run(cmd)
                 if res.returncode != 0:
                     print(f"WARNING: {cfg['name']} run returned exit code {res.returncode}", file=sys.stderr)
+
+                if args.commit_results:
+                    reports_to_add = []
+                    for w in args.windows:
+                        for s in args.seeds:
+                            rep = Path(cfg["report_template"].format(w=w, s=s))
+                            if rep.exists():
+                                reports_to_add.append(str(rep))
+                                hist = rep.parent / "training_history.json"
+                                if hist.exists():
+                                    reports_to_add.append(str(hist))
+                        rep_dir = Path(cfg["report_template"].format(w=w, s=args.seeds[0])).parent.parent
+                        sum_rep = rep_dir / "comparison_report.json"
+                        if sum_rep.exists():
+                            reports_to_add.append(str(sum_rep))
+
+                    if reports_to_add:
+                        subprocess.run(["git", "add", "-f", *reports_to_add])
+                        commit_msg = f"docs({m_key}): update Reddit benchmark evaluation results for windows {args.windows}"
+                        c_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+                        if c_res.returncode == 0:
+                            print(f"• Successfully committed {len(reports_to_add)} evaluation files to branch {cfg['branch']}", flush=True)
+                        else:
+                            print(f"• Results already up to date on branch {cfg['branch']}", flush=True)
 
     finally:
         switch_branch(initial_branch)
