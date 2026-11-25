@@ -1,0 +1,19 @@
+{
+  "model": "CasCN",
+  "dataset": "Reddit",
+  "observation_time": 3600,
+  "seed": 42,
+  "best_epoch": 5,
+  "train_time_sec": 1484.0041267871857,
+  "params": 35623,
+  "metrics": {
+    "MSLE_log2": 0.7763153923583194,
+    "RMSLE_log2": 0.8810876190018331,
+    "MSLE_ln": 0.3729830700096456,
+    "R2_log2": 0.06899324503354132,
+    "PCC_log2": 0.3298269563324785,
+    "MAPE": 64.77440348942037,
+    "MAE_count": 43.700351430632104,
+    "MedAE_count": 38.4661840572135
+  }
+}
