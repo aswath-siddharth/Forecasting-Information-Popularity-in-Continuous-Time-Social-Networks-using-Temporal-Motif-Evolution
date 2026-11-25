@@ -32,7 +32,7 @@ def run_step(cmd: list[str], title: str) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description="Run controlled Reddit DeepHawkes vs CasMotif benchmark.")
     p.add_argument("--data-dir", default="data")
-    p.add_argument("--windows", type=int, nargs="+", default=[3600, 900])
+    p.add_argument("--windows", type=int, nargs="+", default=[3600, 7200])
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     p.add_argument("--workers", type=int, default=min(16, max(1, (os.cpu_count() or 4) // 2)))
     p.add_argument("--device", default="cuda")
