@@ -3,7 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-from pipeline_deepcas.train import train_deepcas
+from deepcas.train import train_deepcas
 
 
 def main():

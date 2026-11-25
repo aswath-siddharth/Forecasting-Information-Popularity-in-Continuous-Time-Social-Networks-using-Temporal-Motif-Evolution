@@ -35,7 +35,7 @@ def main() -> None:
                 continue
 
             cmd = [
-                py, "-m", "pipeline_deepcas.train_reddit",
+                py, "-m", "deepcas.train_reddit",
                 "--cache-dir", args.cache_dir,
                 "--output-dir", str(out_dir),
                 "--observation-time", str(w),

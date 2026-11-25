@@ -81,9 +81,9 @@ The experimental setup adheres strictly to the protocol defined in the benchmark
 
 ```bash
 # 1. Parse Twitter cascades and generate random walks (1-day and 2-day)
-python -m pipeline_deepcas.deepcas_parser --input cascades/twitter.parquet --output-dir data_twitter/processed_1d --observation-time 86400 --horizon 1296000
-python -m pipeline_deepcas.deepcas_parser --input cascades/twitter.parquet --output-dir data_twitter/processed_2d --observation-time 172800 --horizon 1296000
+python -m deepcas.deepcas_parser --input cascades/twitter.parquet --output-dir data_twitter/processed_1d --observation-time 86400 --horizon 1296000
+python -m deepcas.deepcas_parser --input cascades/twitter.parquet --output-dir data_twitter/processed_2d --observation-time 172800 --horizon 1296000
 
 # 2. Train and evaluate DeepCas
-python -m pipeline_deepcas.run_experiments --window both --epochs 60 --early-stop 8 --patience 3 --batch-size 64 --lr 1e-3 --weight-decay 1e-4 --seed 42
+python -m deepcas.run_experiments --window both --epochs 60 --early-stop 8 --patience 3 --batch-size 64 --lr 1e-3 --weight-decay 1e-4 --seed 42
 ```
