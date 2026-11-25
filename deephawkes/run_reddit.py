@@ -28,7 +28,7 @@ def main() -> None:
     for w in args.windows:
         dh_data = Path(args.cache_dir) / f"deephawkes_{w}"
         if not (dh_data / "deephawkes_test.npz").exists():
-            print(f"• Building aligned Reddit split cache for {w}s...", flush=True)
+            print(f"[*] Building aligned Reddit split cache for {w}s...", flush=True)
             subprocess.run([
                 py, "-m", "reddit_benchmark.parser",
                 "--data-dir", "data",
@@ -40,7 +40,7 @@ def main() -> None:
             out_dir = Path(f"reddit_benchmark/runs_{w}/deephawkes/s{s}")
             report_file = out_dir / "deephawkes_evaluation_report.json"
             if not args.force and report_file.exists():
-                print(f"• DeepHawkes Reddit {w}s seed {s} already completed: {report_file}")
+                print(f"[*] DeepHawkes Reddit {w}s seed {s} already completed: {report_file}")
                 continue
 
             cmd = [
@@ -70,4 +70,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
