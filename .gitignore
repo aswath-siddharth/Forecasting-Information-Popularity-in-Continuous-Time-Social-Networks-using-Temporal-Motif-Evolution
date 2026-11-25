@@ -80,4 +80,12 @@ weibo_data/
 # Temporary and local data caches
 scratch/
 cascades/
+cascades.zip
 twitter_data/
+aps_data/
+twitter_benchmark/
+aps_benchmark/
+reddit_benchmark/
+deephawkes/
+cascn/runs_reddit_*/
+documents/
