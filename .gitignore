@@ -76,3 +76,17 @@ Thumbs.db
 # feature archive are regenerable — pipeline_w/README.md documents the download
 # and the exact parser command. Keeps ~1.9 GB out of the repository.
 weibo_data/
+
+# Temporary and local data caches
+scratch/
+cascades/
+cascades.zip
+twitter_data/
+aps_data/
+twitter_benchmark/
+aps_benchmark/
+reddit_benchmark/
+deephawkes/
+casflow/runs_reddit_*/
+documents/
+
