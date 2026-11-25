@@ -4,16 +4,16 @@
   "observation_time": 7200,
   "seed": 42,
   "best_epoch": 1,
-  "train_time_sec": 2440.95,
+  "train_time_sec": 2451.202194213867,
   "params": 92213800,
   "metrics": {
-    "MSLE_log2": 2.26583,
-    "RMSLE_log2": 1.50527,
-    "MSLE_ln": 1.08862,
-    "R2_log2": -0.98338,
-    "PCC_log2": -0.0961,
-    "MAPE": 99.996,
-    "MAE_count": 51.68,
-    "MedAE_count": 47.115
+    "MSLE_log2": 2.2658259705041117,
+    "RMSLE_log2": 1.505266079636458,
+    "MSLE_ln": 1.088622916542834,
+    "R2_log2": -0.9833836781091752,
+    "PCC_log2": -0.09610411729212075,
+    "MAPE": 99.99583267255024,
+    "MAE_count": 51.67951836158948,
+    "MedAE_count": 47.11533702023905
   }
 }
