@@ -1,0 +1,3 @@
+# Keep large user-embedding checkpoints out of git;
+# all reports, training histories, test predictions, and CasMotif checkpoints are tracked.
+runs_*/deephawkes/*/best_deephawkes.pt

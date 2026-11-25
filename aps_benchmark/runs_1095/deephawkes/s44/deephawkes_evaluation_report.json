@@ -1,0 +1,31 @@
+{
+  "model": "DeepHawkes (PyTorch reimplementation of Cao et al., ACM CIKM 2017)",
+  "parameters": {
+    "total": 3739353,
+    "embedding": 3714450,
+    "non_embedding": 24903
+  },
+  "seed": 44,
+  "observation_time_days": 1095,
+  "best_epoch": 1,
+  "best_val_msle": 1.4278745651245117,
+  "metrics": {
+    "MSLE_log2": 2.045666217803955,
+    "MSLE_ln": 0.9828464998145581,
+    "RMSLE_log2": 1.4302678832316535,
+    "R2_log2": -0.09291094360363417,
+    "PCC_log2": 0.4272936908785543,
+    "MAPE_log2": 0.2241244614124298,
+    "MAE_count": 864173888.0,
+    "MedAE_count": 10.686017990112305,
+    "RMSE_count": 54431576064.0,
+    "MAPE_count": 4509388.5,
+    "n_samples": 3984
+  },
+  "timing": {
+    "train_wall_seconds": 19.904031991958618,
+    "test_inference_seconds": 0.12711238861083984,
+    "avg_seconds_per_epoch": 2.0429153442382812,
+    "total_epochs_trained": 9
+  }
+}

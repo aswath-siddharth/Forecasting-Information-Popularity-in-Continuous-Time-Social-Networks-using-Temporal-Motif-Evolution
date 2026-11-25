@@ -1,0 +1,27 @@
+{
+  "model": "CasMotif (AttentionGRU)",
+  "parameters": 21889,
+  "seed": 44,
+  "observation_time_days": 1095,
+  "best_epoch": 3,
+  "best_val_msle": 1.1837079524993896,
+  "metrics": {
+    "MSLE_log2": 1.3196359872817993,
+    "MSLE_ln": 0.6340230873644618,
+    "RMSLE_log2": 1.148754102182795,
+    "R2_log2": 0.2949755930262514,
+    "PCC_log2": 0.601083735515485,
+    "MAPE_log2": 0.21027220785617828,
+    "MAE_count": 28.544206619262695,
+    "MedAE_count": 10.83521842956543,
+    "RMSE_count": 159.00344848632812,
+    "MAPE_count": 0.6766401529312134,
+    "n_samples": 3984
+  },
+  "timing": {
+    "train_wall_seconds": 15.637793064117432,
+    "test_inference_seconds": 0.16196942329406738,
+    "avg_seconds_per_epoch": 1.2624426104805686,
+    "total_epochs_trained": 11
+  }
+}
