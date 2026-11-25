@@ -1,27 +1,27 @@
 {
   "model": "CasMotif (AttentionGRU)",
-  "parameters": 21889,
+  "parameters": 49824,
   "seed": 44,
   "observation_time_days": 1095,
-  "best_epoch": 3,
-  "best_val_msle": 1.1837079524993896,
+  "best_epoch": 7,
+  "best_val_msle": 1.1802030801773071,
   "metrics": {
-    "MSLE_log2": 1.3196359872817993,
-    "MSLE_ln": 0.6340230873644618,
-    "RMSLE_log2": 1.148754102182795,
-    "R2_log2": 0.2949755930262514,
-    "PCC_log2": 0.601083735515485,
-    "MAPE_log2": 0.21027220785617828,
-    "MAE_count": 28.544206619262695,
-    "MedAE_count": 10.83521842956543,
-    "RMSE_count": 159.00344848632812,
-    "MAPE_count": 0.6766401529312134,
+    "MSLE_log2": 1.3088452816009521,
+    "MSLE_ln": 0.6288386602977944,
+    "RMSLE_log2": 1.1440477619404499,
+    "R2_log2": 0.3007406001545717,
+    "PCC_log2": 0.6016453469092552,
+    "MAPE_log2": 0.20955082774162292,
+    "MAE_count": 28.597824096679688,
+    "MedAE_count": 10.690393447875977,
+    "RMSE_count": 160.02108764648438,
+    "MAPE_count": 0.6763446927070618,
     "n_samples": 3984
   },
   "timing": {
-    "train_wall_seconds": 15.637793064117432,
-    "test_inference_seconds": 0.16196942329406738,
-    "avg_seconds_per_epoch": 1.2624426104805686,
-    "total_epochs_trained": 11
+    "train_wall_seconds": 64.18037128448486,
+    "test_inference_seconds": 0.6910934448242188,
+    "avg_seconds_per_epoch": 3.638054863611857,
+    "total_epochs_trained": 15
   }
 }
