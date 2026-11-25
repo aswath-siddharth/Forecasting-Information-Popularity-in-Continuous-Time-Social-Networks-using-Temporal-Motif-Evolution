@@ -82,6 +82,16 @@ scratch/
 
 # Cascades benchmark datasets (Parquet format)
 cascades/
+cascades.zip
+twitter_data/
+aps_data/
+twitter_benchmark/
+aps_benchmark/
+reddit_benchmark/
+deephawkes/
+reddit_deepcas/
+scratch/
+documents/
 
 # Twitter processed data & cloned upstream repo
 data_twitter/
