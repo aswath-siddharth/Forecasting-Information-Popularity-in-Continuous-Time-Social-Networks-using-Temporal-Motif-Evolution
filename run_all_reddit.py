@@ -37,14 +37,14 @@ MODEL_CONFIGS = {
     "deephawkes": {
         "name": "DeepHawkes (CIKM '17)",
         "branch": "deephawkes-all-benchmarks",
-        "module": "reddit_benchmark.run_benchmark",
+        "module": "deephawkes.run_reddit",
         "report_template": "reddit_benchmark/runs_{w}/deephawkes/s{s}/deephawkes_evaluation_report.json",
         "has_max_cascades": False,
     },
     "deepcas": {
         "name": "DeepCas (WWW '17)",
         "branch": "deepcas-all-benchmarks",
-        "module": "pipeline_deepcas.run_reddit",
+        "module": "deepcas.run_reddit",
         "report_template": "reddit_deepcas/runs_{w}/s{s}/deepcas_evaluation_report.json",
         "has_max_cascades": True,
     },
@@ -72,7 +72,7 @@ MODEL_CONFIGS = {
     "casmotif": {
         "name": "CasMotif (Ours)",
         "branch": "casmotif-all-benchmarks",
-        "module": "reddit_benchmark.run_casmotif",
+        "module": "casmotif.run_reddit",
         "report_template": "reddit_benchmark/runs_{w}/casmotif/s{s}/casmotif_evaluation_report.json",
         "has_max_cascades": False,
     },
