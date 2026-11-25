@@ -90,17 +90,24 @@ def compare_models(
         d_ours = np.load(ours_p, allow_pickle=True)
         d_dh = np.load(dh_p, allow_pickle=True)
 
+        ours_true_log = d_ours["true_log2"].ravel()
+        dh_true_log = d_dh["true_log2"].ravel()
+        ours_true_raw = d_ours["true_raw"].ravel()
+        dh_true_raw = d_dh["true_raw"].ravel()
+        ours_pred = d_ours["pred_log2"].ravel()
+        dh_pred = d_dh["pred_log2"].ravel()
+
         # Assert exact alignment
-        assert np.array_equal(d_ours["cascade_id"], d_dh["cascade_id"]), f"Cascade IDs misaligned for seed {s}!"
-        assert np.allclose(d_ours["true_log2"], d_dh["true_log2"], atol=1e-5), f"Targets misaligned for seed {s}!"
+        assert np.array_equal(d_ours["cascade_id"].ravel(), d_dh["cascade_id"].ravel()), f"Cascade IDs misaligned for seed {s}!"
+        assert np.allclose(ours_true_log, dh_true_log, atol=1e-5), f"Targets misaligned for seed {s}!"
 
         if true_log_ref is None:
-            true_log_ref = d_ours["true_log2"]
-            true_raw_ref = d_ours["true_raw"]
-            ids_ref = d_ours["cascade_id"]
+            true_log_ref = ours_true_log
+            true_raw_ref = ours_true_raw
+            ids_ref = d_ours["cascade_id"].ravel()
 
-        ours_preds[s] = d_ours["pred_log2"]
-        dh_preds[s] = d_dh["pred_log2"]
+        ours_preds[s] = ours_pred
+        dh_preds[s] = dh_pred
 
         ours_reports[s] = json.loads((ours_root / f"s{s}" / "casmotif_evaluation_report.json").read_text(encoding="utf-8"))
         dh_reports[s] = json.loads((dh_root / f"s{s}" / "deephawkes_evaluation_report.json").read_text(encoding="utf-8"))

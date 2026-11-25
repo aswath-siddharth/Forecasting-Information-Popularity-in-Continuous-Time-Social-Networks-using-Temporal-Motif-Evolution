@@ -110,9 +110,9 @@ def evaluate(
             trues_raw.append(y_raw.numpy())
 
     infer_sec = time.time() - t0
-    p = np.concatenate(preds, axis=0)
-    tl = np.concatenate(trues_log, axis=0)
-    tr = np.concatenate(trues_raw, axis=0)
+    p = np.concatenate(preds, axis=0).ravel()
+    tl = np.concatenate(trues_log, axis=0).ravel()
+    tr = np.concatenate(trues_raw, axis=0).ravel()
     msle = float(np.mean((p - tl) ** 2))
     return msle, p, tl, tr, infer_sec
 
