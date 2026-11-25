@@ -1,0 +1,3 @@
+# Keep large user-embedding checkpoints (~57 MB at 1h, ~21 MB at 15m) out of git;
+# all reports, training histories, test predictions, and 0.2 MB CasMotif checkpoints are tracked.
+runs_*/deephawkes/*/best_deephawkes.pt

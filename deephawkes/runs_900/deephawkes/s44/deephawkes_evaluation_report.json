@@ -1,0 +1,68 @@
+{
+  "model": "DeepHawkes (PyTorch reimplementation of Cao et al., ACM CIKM 2017)",
+  "architecture": {
+    "vocab_size": 110030,
+    "embedding_dim": 50,
+    "hidden_size": 64,
+    "n_time_intervals": 6,
+    "mlp_hidden": [
+      32,
+      16
+    ],
+    "dropout": 0.2,
+    "params": {
+      "total": 5526403,
+      "embedding": 5501500,
+      "non_embedding": 24903
+    },
+    "learned_time_weights": [
+      0.00036941361031495035,
+      0.0006992685375735164,
+      0.001503247069194913,
+      0.057761140167713165,
+      0.0862351581454277,
+      0.13986815512180328
+    ]
+  },
+  "protocol": {
+    "observation_window_seconds": 900,
+    "prediction_horizon_seconds": 86400,
+    "split": "strictly chronological 70/15/15 aligned to weibo_{train,val,test}.npz",
+    "target": "future increment Delta P = R_24h - R_{T_obs}, log2(Delta P + 1)",
+    "loss": "MSLE (MSE in log2 space)",
+    "batch_size": 64,
+    "optimizer": "AdamW",
+    "lr": 0.001,
+    "emb_lr": 0.0001,
+    "weight_decay": 0.0001,
+    "emb_l2": 0.01,
+    "scheduler": "ReduceLROnPlateau(factor=0.5, patience=3)",
+    "grad_clip_max_norm": 1.0,
+    "early_stop_patience": 8,
+    "max_epochs": 60,
+    "checkpoint": "best validation MSLE epoch",
+    "seed": 44,
+    "device": "cuda"
+  },
+  "data": {
+    "train": 16509,
+    "val": 3538,
+    "test": 3538
+  },
+  "metrics": {
+    "MSLE_log2": 4.470869101864946,
+    "MSLE_ln": 2.1480425348247754,
+    "RMSLE_log2": 2.1144429767352313,
+    "MAE_count": 39529.10079468582,
+    "RMSE_count": 1195363.2516499327,
+    "MedAE_count": 39.910773607405005,
+    "R2_log2": 0.2229924865097176,
+    "PCC_log2": 0.5366577459233646,
+    "n_samples": 3538,
+    "MAPE_log2": 0.24577903747558594,
+    "MAPE_count": 491.01654052734375,
+    "best_val_MSLE_log2": 4.761724412272784,
+    "best_epoch": 7,
+    "train_wall_seconds": 36.36868071556091
+  }
+}
