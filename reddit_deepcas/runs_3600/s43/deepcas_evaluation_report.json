@@ -1,0 +1,19 @@
+{
+  "model": "DeepCas",
+  "dataset": "Reddit",
+  "observation_time": 3600,
+  "seed": 43,
+  "best_epoch": 1,
+  "train_time_sec": 658.65,
+  "params": 44301350,
+  "metrics": {
+    "MSLE_log2": 1.90517,
+    "RMSLE_log2": 1.38028,
+    "MSLE_ln": 0.91534,
+    "R2_log2": -1.2848,
+    "PCC_log2": -0.11283,
+    "MAPE": 74.619,
+    "MAE_count": 62.095,
+    "MedAE_count": 58.464
+  }
+}
