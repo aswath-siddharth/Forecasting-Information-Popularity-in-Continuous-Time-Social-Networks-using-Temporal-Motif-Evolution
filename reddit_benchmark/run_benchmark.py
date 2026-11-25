@@ -36,6 +36,8 @@ def main() -> None:
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     p.add_argument("--workers", type=int, default=min(16, max(1, (os.cpu_count() or 4) // 2)))
     p.add_argument("--device", default="cuda")
+    p.add_argument("--epochs", type=int, default=60, help="Max training epochs (default: 60).")
+    p.add_argument("--batch-size", type=int, default=64, help="Batch size (default: 64).")
     p.add_argument("--max-files", type=int, default=0, help="Optional file cap for quick tests (0 = all 4,050 files).")
     p.add_argument("--force", action="store_true", help="Re-run even if outputs already exist.")
     args = p.parse_args()
@@ -74,12 +76,12 @@ def main() -> None:
                  "--data-dir", str(dh_cache),
                  "--output-dir", str(out_dir),
                  "--observation-time", str(w),
-                 "--batch-size", "64",
+                 "--batch-size", str(args.batch_size),
                  "--lr", "1e-3",
                  "--weight-decay", "1e-4",
                  "--patience", "3",
                  "--early-stop", "8",
-                 "--epochs", "60",
+                 "--epochs", str(args.epochs),
                  "--seed", str(s),
                  "--device", args.device],
                 f"Train DeepHawkes (Reddit) | window={w}s | seed={s}",
