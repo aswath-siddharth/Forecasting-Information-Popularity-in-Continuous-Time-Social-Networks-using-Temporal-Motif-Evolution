@@ -167,6 +167,53 @@ def print_summary_table(summary: dict) -> None:
         print("=" * 92 + "\n", flush=True)
 
 
+def format_detailed_commit_message(m_key: str, cfg: dict, windows: list[int], seeds: list[int]) -> str:
+    """Format rich, conventional commit message with quantitative test metrics."""
+    lines = [
+        f"docs({m_key}): add Reddit benchmark evaluation results ({', '.join(f'{w}s' for w in windows)})",
+        "",
+        f"Model: {cfg['name']}",
+        "Dataset: Novel Multi-Subreddit Comment-Cascade Dataset (data/)",
+        f"Protocol: Chronological 70/15/15 split, target Delta P = R_24h - R_T_obs, MSLE_log2 loss",
+        f"Observation Windows: {', '.join(f'{w}s ({w/3600:.1f}h)' for w in windows)}",
+        f"Horizon: 86,400s (24 hours)",
+        f"Seeds: {seeds}",
+        "",
+        "Evaluation Results:",
+    ]
+
+    for w in windows:
+        msle_list = []
+        r2_list = []
+        medae_list = []
+        for s in seeds:
+            rep = Path(cfg["report_template"].format(w=w, s=s))
+            if rep.exists():
+                try:
+                    data = json.loads(rep.read_text(encoding="utf-8"))
+                    m = data.get("metrics", {}) or data
+                    if "MSLE_log2" in m:
+                        msle_list.append(m["MSLE_log2"])
+                    if "R2_log2" in m:
+                        r2_list.append(m["R2_log2"])
+                    if "MedAE_count" in m:
+                        medae_list.append(m["MedAE_count"])
+                except Exception:
+                    pass
+
+        if msle_list:
+            mean_msle = sum(msle_list) / len(msle_list)
+            std_msle = (sum((x - mean_msle)**2 for x in msle_list) / len(msle_list))**0.5 if len(msle_list) > 1 else 0.0
+            mean_r2 = sum(r2_list) / len(r2_list) if r2_list else 0.0
+            mean_medae = sum(medae_list) / len(medae_list) if medae_list else 0.0
+            lines.append(
+                f"- Window {w}s ({w/3600:.1f}h): MSLE_log2 = {mean_msle:.4f} ± {std_msle:.3f} | "
+                f"R2 = {mean_r2:+.3f} | MedAE = {mean_medae:.1f} ({len(msle_list)} runs)"
+            )
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Run all cascade prediction models on the Reddit dataset.")
     p.add_argument(
@@ -271,7 +318,7 @@ def main() -> None:
 
                     if reports_to_add:
                         subprocess.run(["git", "add", "-f", *reports_to_add])
-                        commit_msg = f"docs({m_key}): update Reddit benchmark evaluation results for windows {args.windows}"
+                        commit_msg = format_detailed_commit_message(m_key, cfg, args.windows, args.seeds)
                         c_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
                         if c_res.returncode == 0:
                             print(f"• Successfully committed {len(reports_to_add)} evaluation files to branch {cfg['branch']}", flush=True)
