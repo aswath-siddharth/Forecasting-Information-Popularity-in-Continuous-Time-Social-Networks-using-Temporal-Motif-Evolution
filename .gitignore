@@ -82,6 +82,11 @@ scratch/
 
 # Cascades benchmark datasets (Parquet format)
 cascades/
+cascades.zip
 twitter_data/
 aps_data/
+twitter_benchmark/runs_*/
+reddit_benchmark/runs_*/
+aps_benchmark/runs_*/
+documents/
 
