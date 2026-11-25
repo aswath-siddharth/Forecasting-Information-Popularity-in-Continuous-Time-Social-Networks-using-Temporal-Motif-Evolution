@@ -86,7 +86,7 @@ def get_current_branch() -> str:
 
 def switch_branch(branch: str) -> bool:
     print(f"\n>>> Switching to branch: {branch} ...", flush=True)
-    res = subprocess.run(["git", "checkout", branch], capture_output=True, text=True)
+    res = subprocess.run(["git", "checkout", "-f", branch], capture_output=True, text=True)
     if res.returncode != 0:
         print(f"ERROR switching to {branch}:\n{res.stderr}", file=sys.stderr)
         return False
@@ -232,7 +232,8 @@ def main() -> None:
     p.add_argument("--device", default="cuda", help="Execution device (default: cuda).")
     p.add_argument("--max-cascades", type=int, default=0, help="Optional cascade count cap for quick testing (default: 0 = all).")
     p.add_argument("--force", action="store_true", help="Re-run even if checkpoints and reports already exist.")
-    p.add_argument("--commit-results", action="store_true", help="Automatically commit generated JSON evaluation reports to each model branch.")
+    p.add_argument("--commit-results", action="store_true", default=True, help="Automatically commit and push generated evaluation reports to each model branch (default: True).")
+    p.add_argument("--no-commit", action="store_false", dest="commit_results", help="Disable automatic commit and push to remote.")
     p.add_argument("--summary-only", action="store_true", help="Skip model training and display aggregated leaderboard.")
     args = p.parse_args()
 
@@ -322,6 +323,11 @@ def main() -> None:
                         c_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
                         if c_res.returncode == 0:
                             print(f"• Successfully committed {len(reports_to_add)} evaluation files to branch {cfg['branch']}", flush=True)
+                            p_res = subprocess.run(["git", "push", "origin", cfg["branch"]], capture_output=True, text=True)
+                            if p_res.returncode == 0:
+                                print(f"• Successfully pushed {cfg['branch']} to origin", flush=True)
+                            else:
+                                print(f"• Push warning on {cfg['branch']}: {p_res.stderr.strip()}", flush=True)
                         else:
                             print(f"• Results already up to date on branch {cfg['branch']}", flush=True)
 
@@ -335,6 +341,16 @@ def main() -> None:
     out_summary_file = Path("reddit_benchmark_all_models_summary.json")
     out_summary_file.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"• Saved multi-model summary report in {time.time()-t_benchmark_start:.1f}s -> {out_summary_file}", flush=True)
+
+    if args.commit_results and out_summary_file.exists():
+        subprocess.run(["git", "add", "-f", str(out_summary_file)])
+        c_res = subprocess.run(
+            ["git", "commit", "-m", "docs(benchmark): update unified multi-model Reddit leaderboard summary report"],
+            capture_output=True, text=True,
+        )
+        if c_res.returncode == 0:
+            subprocess.run(["git", "push", "origin", initial_branch])
+            print(f"• Pushed summary report to origin/{initial_branch}", flush=True)
 
 
 if __name__ == "__main__":
