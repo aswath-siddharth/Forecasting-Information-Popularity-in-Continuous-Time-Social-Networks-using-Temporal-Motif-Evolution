@@ -1,0 +1,95 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "Twitter Cascades (cascades/twitter.parquet)",
+  "observation_window_seconds": 86400,
+  "observation_window_days": 1.0,
+  "prediction_horizon_days": 15,
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "n_samples": 2951,
+  "vocab_size": 142734,
+  "naive_baseline_metrics": {
+    "MSLE_log2": 9.514632857645873,
+    "RMSLE_log2": 3.0845798510730553,
+    "MSLE_ln": 4.571334032781109,
+    "R2_log2": -3.031998582501841,
+    "PCC_log2": 0.0,
+    "MAPE": 780.3140090797517,
+    "MAE_count": 12.094885551667096,
+    "MedAE_count": 10.60794137827849,
+    "n_samples": 2951
+  },
+  "mean_metrics": {
+    "MSLE_log2": 6.868758607844156,
+    "RMSLE_log2": 2.619762410193047,
+    "MSLE_ln": 3.300115775015314,
+    "R2_log2": -1.9107612857725405,
+    "PCC_log2": 0.09242706386264438,
+    "MAPE": 905.325486975512,
+    "MAE_count": 14.993846297162037,
+    "MedAE_count": 3.467345952666181
+  },
+  "std_metrics": {
+    "MSLE_log2": 0.39577740930968475,
+    "RMSLE_log2": 0.0748566762799088,
+    "MSLE_ln": 0.1901524491435757,
+    "R2_log2": 0.1677178696433409,
+    "PCC_log2": 0.01659680330333752,
+    "MAPE": 55.12216139415305,
+    "MAE_count": 0.614196142441154,
+    "MedAE_count": 0.7396822736419888
+  },
+  "per_seed": [
+    {
+      "seed": 42,
+      "best_epoch": 3,
+      "best_val_msle": 5.930867519973698,
+      "test_metrics": {
+        "MSLE_log2": 6.520886632452372,
+        "RMSLE_log2": 2.5536026770921847,
+        "MSLE_ln": 3.1329796359806528,
+        "R2_log2": -1.7633442143356057,
+        "PCC_log2": 0.10212507369379215,
+        "MAPE": 874.6976634646279,
+        "MAE_count": 15.109037349000248,
+        "MedAE_count": 2.7176039413240547,
+        "n_samples": 2951
+      }
+    },
+    {
+      "seed": 43,
+      "best_epoch": 6,
+      "best_val_msle": 6.7400582447097275,
+      "test_metrics": {
+        "MSLE_log2": 7.422429309692695,
+        "RMSLE_log2": 2.724413571705422,
+        "MSLE_ln": 3.5661285324366503,
+        "R2_log2": -2.145389307518242,
+        "PCC_log2": 0.10608865790606516,
+        "MAPE": 982.7210492839492,
+        "MAE_count": 15.681840214748334,
+        "MedAE_count": 4.473968480877373,
+        "n_samples": 2951
+      }
+    },
+    {
+      "seed": 44,
+      "best_epoch": 8,
+      "best_val_msle": 6.19440720460503,
+      "test_metrics": {
+        "MSLE_log2": 6.662959881387402,
+        "RMSLE_log2": 2.5812709817815334,
+        "MSLE_ln": 3.201239156628639,
+        "R2_log2": -1.8235503354637732,
+        "PCC_log2": 0.06906745998807585,
+        "MAPE": 858.5577481779593,
+        "MAE_count": 14.190661327737528,
+        "MedAE_count": 3.2104654357971167,
+        "n_samples": 2951
+      }
+    }
+  ]
+}
