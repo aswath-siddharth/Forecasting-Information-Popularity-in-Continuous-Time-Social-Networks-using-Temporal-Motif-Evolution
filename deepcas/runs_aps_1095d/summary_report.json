@@ -1,0 +1,106 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "APS Citations (cascades/aps.parquet)",
+  "target": "Future Increment (R_7300d - R_1095d)",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "split_counts": {
+    "train": 18588,
+    "val": 3983,
+    "test": 3984
+  },
+  "vocab_size": 99688,
+  "n_params": 5011100,
+  "mean_train_time_seconds": 37.596666666666664,
+  "naive_baseline_metrics": {
+    "MSLE_log2": 2.4251480658037305,
+    "RMSLE_log2": 1.5572886905785102,
+    "MSLE_ln": 1.165169697413299,
+    "R2_log2": -0.29565170740887337,
+    "PCC_log2": 0.0,
+    "MAPE": 68.34863469976949,
+    "MAE_count": 35.772767399001346,
+    "MedAE_count": 12.459852443581319,
+    "n_samples": 3984
+  },
+  "mean_metrics": {
+    "MSLE_log2": 1.8725139330248768,
+    "RMSLE_log2": 1.3653521051075626,
+    "MSLE_ln": 0.8996549627256272,
+    "R2_log2": -0.0004031954504731816,
+    "PCC_log2": 0.5327998342635657,
+    "MAPE": 61.50496204118383,
+    "MAE_count": 32.79461224481043,
+    "MedAE_count": 11.71965370813763
+  },
+  "std_metrics": {
+    "MSLE_log2": 0.24841516068992278,
+    "RMSLE_log2": 0.09125547711356292,
+    "MSLE_ln": 0.11935181265644768,
+    "R2_log2": 0.13271747471116938,
+    "PCC_log2": 0.0005328870830257552,
+    "MAPE": 1.6021171374708956,
+    "MAE_count": 1.2959348407372207,
+    "MedAE_count": 0.6352680794861265
+  },
+  "per_seed": [
+    {
+      "seed": 42,
+      "best_epoch": 13,
+      "best_val_msle": 1.5883860866418293,
+      "train_time_seconds": 53.04,
+      "test_metrics": {
+        "MSLE_log2": 1.881131994465965,
+        "RMSLE_log2": 1.371543653868139,
+        "MSLE_ln": 0.9037955363191302,
+        "R2_log2": -0.005007452888667885,
+        "PCC_log2": 0.5320640961384996,
+        "MAPE": 60.46558371715035,
+        "MAE_count": 32.68807346351598,
+        "MedAE_count": 11.67035938209839,
+        "n_samples": 3984
+      }
+    },
+    {
+      "seed": 43,
+      "best_epoch": 6,
+      "best_val_msle": 1.4770463877756213,
+      "train_time_seconds": 34.9,
+      "test_metrics": {
+        "MSLE_log2": 1.5640512653810692,
+        "RMSLE_log2": 1.2506203522176782,
+        "MSLE_ln": 0.7514531443749113,
+        "R2_log2": 0.16439506476302912,
+        "PCC_log2": 0.5333090186592254,
+        "MAPE": 63.76819314646259,
+        "MAE_count": 31.263376102739286,
+        "MedAE_count": 10.967431608484155,
+        "n_samples": 3984
+      }
+    },
+    {
+      "seed": 44,
+      "best_epoch": 2,
+      "best_val_msle": 1.6501955460161233,
+      "train_time_seconds": 24.85,
+      "test_metrics": {
+        "MSLE_log2": 2.1723585392275964,
+        "RMSLE_log2": 1.473892309236871,
+        "MSLE_ln": 1.0437162074828399,
+        "R2_log2": -0.16059719822578078,
+        "PCC_log2": 0.5330263879929721,
+        "MAPE": 60.28110925993854,
+        "MAE_count": 34.43238716817603,
+        "MedAE_count": 12.521170133830347,
+        "n_samples": 3984
+      }
+    }
+  ],
+  "observation_window_days": 1095,
+  "observation_window_years": 3.0,
+  "prediction_horizon_days": 7300,
+  "prediction_horizon_years": 20.0
+}

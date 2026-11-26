@@ -1,0 +1,56 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "APS Citations (cascades/aps.parquet)",
+  "observation_window_days": 1825,
+  "observation_window_years": 5.0,
+  "prediction_horizon_days": 7300,
+  "prediction_horizon_years": 20.0,
+  "target": "Future Increment (R_7300d - R_1825d)",
+  "seed": 43,
+  "best_epoch": 1,
+  "best_val_msle": 1.4091866473192254,
+  "train_time_seconds": 44.04,
+  "n_params": 7548750,
+  "split_counts": {
+    "train": 32101,
+    "val": 6879,
+    "test": 6880
+  },
+  "test_metrics": {
+    "MSLE_log2": 1.3783815415965264,
+    "RMSLE_log2": 1.174044948712155,
+    "MSLE_ln": 0.6622475659892678,
+    "R2_log2": 0.33519749017890643,
+    "PCC_log2": 0.5806444866421309,
+    "MAPE": 83.6295156507157,
+    "MAE_count": 17.643479721537265,
+    "MedAE_count": 6.985786582062727,
+    "n_samples": 6880
+  },
+  "naive_baseline_metrics": {
+    "MSLE_log2": 2.4483664863943337,
+    "RMSLE_log2": 1.5647256904628153,
+    "MSLE_ln": 1.1763250575644746,
+    "R2_log2": -0.1808633067093499,
+    "PCC_log2": 0.0,
+    "MAPE": 76.02619496755551,
+    "MAE_count": 21.79636807281196,
+    "MedAE_count": 6.731799440917531,
+    "n_samples": 6880
+  },
+  "hyperparameters": {
+    "batch_size": 64,
+    "optimizer": "AdamW",
+    "weight_decay": 0.0001,
+    "initial_lr": 0.001,
+    "early_stopping_patience": 8,
+    "lr_plateau_patience": 3,
+    "max_grad_norm": 1.0,
+    "embedding_dim": 50,
+    "hidden_gru": 32,
+    "dropout": 0.2,
+    "walk_length": 10,
+    "n_walks": 32,
+    "vocab_size": 150441
+  }
+}
