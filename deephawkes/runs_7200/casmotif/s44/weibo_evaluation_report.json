@@ -1,0 +1,73 @@
+{
+  "setting": {
+    "dataset": "Sina Weibo (released with DeepHawkes, Cao et al., CIKM 2017)",
+    "observation_window_seconds": 7200,
+    "prediction_horizon_hours": 24,
+    "target": "increment retweets (DeepHawkes target = increment after the window)",
+    "loss": "MSE on log2(y+1), i.e. MSLE in log2 units",
+    "split": "chronological by publish time, 70/15/15 (DeepHawkes protocol)",
+    "feature_dim": 15,
+    "note": "DeepHawkes and CasCN report results at 1h/2h/3h observation windows. This run uses a 120-minute window, which is NOT directly comparable to their published numbers.",
+    "training": {
+      "seed": 44,
+      "scheduler": "plateau",
+      "ema_decay": 0.0,
+      "early_stop": 8,
+      "epochs": 60,
+      "lr": 0.001,
+      "hidden_size": 64,
+      "num_layers": 1,
+      "side_features": false,
+      "evaluated_on": "test"
+    }
+  },
+  "data": {
+    "train_cascades": 35402,
+    "val_cascades": 7586,
+    "test_cascades": 7587,
+    "mean_events_per_cascade": 67.46607536297384
+  },
+  "results": {
+    "mean_baseline": {
+      "metrics": {
+        "MSLE_log2": 5.005143604138692,
+        "MSLE_ln": 2.404736329701844,
+        "RMSLE_log2": 2.2372178267076928,
+        "MAE_count": 66.11161285500975,
+        "RMSE_count": 575.057672452136,
+        "MedAE_count": 12.649372912449596,
+        "R2_log2": -2.232818657454949e-05,
+        "PCC_log2": NaN,
+        "n_samples": 7587
+      }
+    },
+    "attention_gru": {
+      "metrics": {
+        "MSLE_log2": 1.845697140929787,
+        "MSLE_ln": 0.8867707541399235,
+        "RMSLE_log2": 1.3585643676064034,
+        "MAE_count": 49.701128594172005,
+        "RMSE_count": 564.8777348874949,
+        "MedAE_count": 7.231472899378691,
+        "R2_log2": 0.6312316892419048,
+        "PCC_log2": 0.7959334643882329,
+        "n_samples": 7587,
+        "evaluated_on": "test",
+        "n_params": 49824,
+        "best_val_MSLE_log2": 1.8795067758119406
+      },
+      "classification": {
+        "cutoff_count": 248.0,
+        "decision_threshold_log2": 7.199821800131295,
+        "val_f1_at_threshold": 0.6356382978723404,
+        "positive_rate": 0.04349545274812179,
+        "accuracy": 0.9625675497561619,
+        "precision": 0.5771812080536913,
+        "recall": 0.5212121212121212,
+        "f1": 0.5477707006369427,
+        "roc_auc": 0.8846104701416813,
+        "pr_auc": 0.5690209527028648
+      }
+    }
+  }
+}

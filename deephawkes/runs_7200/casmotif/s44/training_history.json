@@ -1,0 +1,100 @@
+[
+  {
+    "model": "attention_gru",
+    "epoch": 1,
+    "train_msle": 2.4832963196809543,
+    "val_msle": 2.0527031066037025,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 2,
+    "train_msle": 2.0453908094860584,
+    "val_msle": 1.9547976741269857,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 3,
+    "train_msle": 1.9725160317945998,
+    "val_msle": 1.931071193779216,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 4,
+    "train_msle": 1.9272681608096787,
+    "val_msle": 1.9001133096318286,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 5,
+    "train_msle": 1.8940705591375646,
+    "val_msle": 1.892351534186291,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 6,
+    "train_msle": 1.8843272828668463,
+    "val_msle": 1.8795067758119406,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 7,
+    "train_msle": 1.8598692360122282,
+    "val_msle": 2.001999697264503,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 8,
+    "train_msle": 1.8310123123632012,
+    "val_msle": 1.903390817782458,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 9,
+    "train_msle": 1.8453483666538761,
+    "val_msle": 1.9668885840087378,
+    "lr": 0.001
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 10,
+    "train_msle": 1.8282741699838465,
+    "val_msle": 2.0194872437404987,
+    "lr": 0.0005
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 11,
+    "train_msle": 1.7764607088014968,
+    "val_msle": 1.9209957383260006,
+    "lr": 0.0005
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 12,
+    "train_msle": 1.7732331593544475,
+    "val_msle": 2.0426968235929475,
+    "lr": 0.0005
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 13,
+    "train_msle": 1.7618693183260274,
+    "val_msle": 1.9632659108698869,
+    "lr": 0.0005
+  },
+  {
+    "model": "attention_gru",
+    "epoch": 14,
+    "train_msle": 1.7490635963445966,
+    "val_msle": 1.9953120671400504,
+    "lr": 0.00025
+  }
+]
