@@ -39,6 +39,6 @@
     "MAPE_count": 0.5505977869033813,
     "best_val_MSLE_log2": 0.6416987160729908,
     "best_epoch": 8,
-    "train_wall_seconds": 362.8977975845337
+    "train_wall_seconds": 391.4999475479126
   }
 }
