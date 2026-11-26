@@ -12,18 +12,6 @@
       "MAE_mean": 38.38825895748398,
       "MedAE_mean": 34.831828964469175
     },
-    "cascn": {
-      "name": "CasCN (CIKM '19)",
-      "n_runs": 1,
-      "params": 35623,
-      "avg_train_time_sec": 2616.1847784519196,
-      "MSLE_log2_mean": 0.7763153923583194,
-      "MSLE_log2_std": 0.0,
-      "RMSLE_mean": 0.8810876190018331,
-      "R2_mean": 0.06899324503354132,
-      "MAE_mean": 43.700351430632104,
-      "MedAE_mean": 38.4661840572135
-    },
     "casmotif": {
       "name": "CasMotif (Ours)",
       "n_runs": 3,
@@ -37,5 +25,18 @@
       "MedAE_mean": 32.72158379559591
     }
   },
-  "7200": {}
+  "7200": {
+    "casmotif": {
+      "name": "CasMotif (Ours)",
+      "n_runs": 3,
+      "params": 49824,
+      "avg_train_time_sec": null,
+      "MSLE_log2_mean": 0.7136156499745461,
+      "MSLE_log2_std": 0.0051308809047430634,
+      "RMSLE_mean": 0.8447522938831624,
+      "R2_mean": 0.3753387722500657,
+      "MAE_mean": 30.273301248426364,
+      "MedAE_mean": 24.030826349271564
+    }
+  }
 }
