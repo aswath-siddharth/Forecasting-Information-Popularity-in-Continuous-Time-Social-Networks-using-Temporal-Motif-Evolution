@@ -3,14 +3,28 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 
 from .data_reddit import load_reddit_cascn_split
+
+
+def format_seconds(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = seconds % 60
+    if h > 0:
+        return f"{h}h {m:02d}m {s:04.1f}s"
+    elif m > 0:
+        return f"{m}m {s:04.1f}s"
+    else:
+        return f"{s:.2f}s"
 
 
 def aggregate_metrics(seed_reports: list[dict]) -> dict:
@@ -48,13 +62,20 @@ def main() -> None:
     py = sys.executable
 
     for w in args.windows:
+        t_w_start = time.time()
+        start_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        per_seed_timing = {}
+
         # Step 1: Ensure all split caches exist
         cache_path = Path(args.cache_dir) / f"cascn_{w}"
+        cache_extraction_sec = 0.0
         for split in ("val", "test", "train"):
             split_file = cache_path / f"cascn_{split}.pkl"
             if not split_file.exists():
+                t0_cache = time.time()
                 print(f"• Pre-extracting CasCN {split} split for {w}s into cache...", flush=True)
                 load_reddit_cascn_split(args.cache_dir, split=split, observation_time=w, max_cascades=args.max_cascades)
+                cache_extraction_sec += (time.time() - t0_cache)
 
         seed_reports = []
         for s in args.seeds:
@@ -63,7 +84,9 @@ def main() -> None:
             if not args.force and report_file.exists():
                 print(f"• CasCN Reddit {w}s seed {s} already completed: {report_file}")
                 with open(report_file, "r") as fh:
-                    seed_reports.append(json.load(fh))
+                    rep_data = json.load(fh)
+                    seed_reports.append(rep_data)
+                    per_seed_timing[f"s{s}"] = rep_data.get("train_time_sec", 0.0)
                 continue
 
             cmd = [
@@ -84,17 +107,28 @@ def main() -> None:
                 cmd += ["--max-cascades", str(args.max_cascades)]
 
             print("\n" + "=" * 76)
-            print(f" RUNNING: CasCN Reddit | window={w}s | seed={s}")
+            print(f" RUNNING: CasCN Reddit | window={w}s | seed={s} | start={datetime.datetime.now().strftime('%H:%M:%S')}")
             print("=" * 76, flush=True)
 
+            t_seed_start = time.time()
             res = subprocess.run(cmd)
+            seed_dur = time.time() - t_seed_start
+
             if res.returncode != 0:
                 print(f"ERROR: CasCN run failed for window {w} seed {s}")
                 sys.exit(res.returncode)
 
             if report_file.exists():
                 with open(report_file, "r") as fh:
-                    seed_reports.append(json.load(fh))
+                    rep_data = json.load(fh)
+                    seed_reports.append(rep_data)
+                    per_seed_timing[f"s{s}"] = rep_data.get("train_time_sec", seed_dur)
+
+            print(f"• Seed {s} finished in {format_seconds(seed_dur)} ({seed_dur:.1f}s)", flush=True)
+
+        t_w_end = time.time()
+        end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        total_w_sec = t_w_end - t_w_start
 
         if len(seed_reports) == len(args.seeds):
             summary = {
@@ -103,13 +137,28 @@ def main() -> None:
                 "observation_time": w,
                 "seeds": args.seeds,
                 "summary": aggregate_metrics(seed_reports),
+                "timing": {
+                    "start_iso": start_iso,
+                    "end_iso": end_iso,
+                    "cache_extraction_sec": cache_extraction_sec,
+                    "per_seed_sec": per_seed_timing,
+                    "total_train_sec": sum(per_seed_timing.values()),
+                    "total_wall_clock_sec": total_w_sec,
+                    "total_wall_clock_formatted": format_seconds(total_w_sec),
+                }
             }
             summary_path = Path(f"cascn/runs_reddit_{w}/summary_report.json")
             summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-            print(f"\n• Saved Reddit {w}s 3-seed summary -> {summary_path}")
+            print("\n" + "=" * 76)
+            print(f" CASCN REDDIT {w}s COMPLETED SUMMARY")
+            print("=" * 76)
             msle_m = summary["summary"]["MSLE_log2"]["mean"]
             msle_s = summary["summary"]["MSLE_log2"]["std"]
-            print(f"  MSLE_log2: {msle_m:.4f} ± {msle_s:.4f}")
+            print(f" Performance (MSLE_log2): {msle_m:.4f} ± {msle_s:.4f}")
+            print(f" Total Runtime: {format_seconds(total_w_sec)} ({total_w_sec:.1f}s)")
+            for s_key, s_time in per_seed_timing.items():
+                print(f"   - {s_key}: {format_seconds(s_time)} ({s_time:.1f}s)")
+            print(f" Saved summary -> {summary_path}\n" + "=" * 76, flush=True)
 
 
 if __name__ == "__main__":
