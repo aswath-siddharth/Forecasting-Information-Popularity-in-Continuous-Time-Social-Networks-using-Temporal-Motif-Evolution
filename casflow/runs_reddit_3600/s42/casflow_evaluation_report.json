@@ -1,0 +1,22 @@
+{
+  "model": "CasFlow",
+  "dataset": "Reddit",
+  "observation_time": 3600,
+  "seed": 42,
+  "best_epoch": 6,
+  "train_time_sec": 1161.225049495697,
+  "params": 353621,
+  "metrics": {
+    "MSLE_log2": 0.7605827633746745,
+    "MSLE_ln": 0.36542428099759655,
+    "RMSLE_log2": 0.8721139623780108,
+    "MAE_count": 44.12396261053647,
+    "RMSE_count": 54.047837288266074,
+    "MedAE_count": 38.58994007002054,
+    "R2_log2": 0.08786081355187081,
+    "PCC_log2": 0.38503120341338576,
+    "MAPE_log2": 0.11487033823320422,
+    "MALE_log2": 0.6953141018796695,
+    "n_samples": 36936
+  }
+}
