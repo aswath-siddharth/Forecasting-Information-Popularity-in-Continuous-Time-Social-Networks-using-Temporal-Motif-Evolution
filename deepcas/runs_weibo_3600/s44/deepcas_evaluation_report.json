@@ -1,0 +1,55 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "Sina Weibo (dataset_weibo.txt)",
+  "observation_window_seconds": 3600,
+  "observation_window_hours": 1.0,
+  "prediction_horizon_hours": 24,
+  "target": "Future Increment (R_24h - R_obs)",
+  "seed": 44,
+  "best_epoch": 10,
+  "best_val_msle": 2.944322980007842,
+  "train_time_seconds": 305.73,
+  "n_params": 51239850,
+  "split_counts": {
+    "train": 29530,
+    "val": 6328,
+    "test": 6328
+  },
+  "test_metrics": {
+    "MSLE_log2": 3.0230708005696116,
+    "RMSLE_log2": 1.7386980187972871,
+    "MSLE_ln": 1.4524434774217798,
+    "R2_log2": 0.4275431369287559,
+    "PCC_log2": 0.6545184871381672,
+    "MAPE": 274.7049421200454,
+    "MAE_count": 83.59525129314542,
+    "MedAE_count": 13.245096342968925,
+    "n_samples": 6328
+  },
+  "naive_baseline_metrics": {
+    "MSLE_log2": 5.282547323894294,
+    "RMSLE_log2": 2.2983792819929207,
+    "MSLE_ln": 2.5380157829305428,
+    "R2_log2": -0.0003174485665800031,
+    "PCC_log2": 0.0,
+    "MAPE": 292.3097401880145,
+    "MAE_count": 105.31847164602894,
+    "MedAE_count": 21.49562763528598,
+    "n_samples": 6328
+  },
+  "hyperparameters": {
+    "batch_size": 64,
+    "optimizer": "AdamW",
+    "weight_decay": 0.0001,
+    "initial_lr": 0.001,
+    "early_stopping_patience": 8,
+    "lr_plateau_patience": 3,
+    "max_grad_norm": 1.0,
+    "embedding_dim": 50,
+    "hidden_gru": 32,
+    "dropout": 0.2,
+    "walk_length": 10,
+    "n_walks": 32,
+    "vocab_size": 1024263
+  }
+}

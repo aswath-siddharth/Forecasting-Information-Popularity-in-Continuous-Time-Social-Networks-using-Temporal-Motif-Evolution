@@ -97,4 +97,7 @@ documents/
 data_twitter/
 deepcas_repo/
 
+# DeepCas Weibo checkpoints (>190 MB embedding tables exceed GitHub's 100 MB limit)
+deepcas/runs_weibo_*/**/best_deepcas.pt
+
 

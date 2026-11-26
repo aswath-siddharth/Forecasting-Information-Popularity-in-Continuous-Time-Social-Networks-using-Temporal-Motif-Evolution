@@ -1,0 +1,105 @@
+{
+  "model": "DeepCas (Li et al., WWW 2017)",
+  "dataset": "Sina Weibo (dataset_weibo.txt)",
+  "observation_window_seconds": 3600,
+  "observation_window_hours": 1.0,
+  "prediction_horizon_hours": 24,
+  "target": "Future Increment (R_24h - R_obs)",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "split_counts": {
+    "train": 29530,
+    "val": 6328,
+    "test": 6328
+  },
+  "vocab_size": 1024263,
+  "n_params": 51239850,
+  "mean_train_time_seconds": 369.4766666666667,
+  "naive_baseline_metrics": {
+    "MSLE_log2": 5.282547323894294,
+    "RMSLE_log2": 2.2983792819929207,
+    "MSLE_ln": 2.5380157829305428,
+    "R2_log2": -0.0003174485665800031,
+    "PCC_log2": 0.0,
+    "MAPE": 292.3097401880145,
+    "MAE_count": 105.31847164602894,
+    "MedAE_count": 21.49562763528598,
+    "n_samples": 6328
+  },
+  "mean_metrics": {
+    "MSLE_log2": 2.9785311911908816,
+    "RMSLE_log2": 1.7257905716819604,
+    "MSLE_ln": 1.4310442878570298,
+    "R2_log2": 0.43597727782369033,
+    "PCC_log2": 0.663053740515731,
+    "MAPE": 272.78183208498075,
+    "MAE_count": 82.63205410733897,
+    "MedAE_count": 13.423522733236481
+  },
+  "std_metrics": {
+    "MSLE_log2": 0.04596480757402671,
+    "RMSLE_log2": 0.013345182071956712,
+    "MSLE_ln": 0.022083930333111332,
+    "R2_log2": 0.00870402027982369,
+    "PCC_log2": 0.0070242952350696814,
+    "MAPE": 10.591409743317318,
+    "MAE_count": 0.7844350959764818,
+    "MedAE_count": 0.30248137547242976
+  },
+  "per_seed": [
+    {
+      "seed": 42,
+      "best_epoch": 18,
+      "best_val_msle": 2.8888563916897203,
+      "train_time_seconds": 429.34,
+      "test_metrics": {
+        "MSLE_log2": 2.9152575732609343,
+        "RMSLE_log2": 1.7074125375142746,
+        "MSLE_ln": 1.4006442874210776,
+        "R2_log2": 0.4479589412463668,
+        "PCC_log2": 0.6717228638431261,
+        "MAPE": 258.95586194778474,
+        "MAE_count": 81.67380468244198,
+        "MedAE_count": 13.176038005591389,
+        "n_samples": 6328
+      }
+    },
+    {
+      "seed": 43,
+      "best_epoch": 14,
+      "best_val_msle": 2.9164327880374703,
+      "train_time_seconds": 373.36,
+      "test_metrics": {
+        "MSLE_log2": 2.9972651997420994,
+        "RMSLE_log2": 1.7312611587343196,
+        "MSLE_ln": 1.4400450987282316,
+        "R2_log2": 0.4324297552959483,
+        "PCC_log2": 0.6629198705658994,
+        "MAPE": 284.68469218711203,
+        "MAE_count": 82.62710634642953,
+        "MedAE_count": 13.849433851149131,
+        "n_samples": 6328
+      }
+    },
+    {
+      "seed": 44,
+      "best_epoch": 10,
+      "best_val_msle": 2.944322980007842,
+      "train_time_seconds": 305.73,
+      "test_metrics": {
+        "MSLE_log2": 3.0230708005696116,
+        "RMSLE_log2": 1.7386980187972871,
+        "MSLE_ln": 1.4524434774217798,
+        "R2_log2": 0.4275431369287559,
+        "PCC_log2": 0.6545184871381672,
+        "MAPE": 274.7049421200454,
+        "MAE_count": 83.59525129314542,
+        "MedAE_count": 13.245096342968925,
+        "n_samples": 6328
+      }
+    }
+  ]
+}
