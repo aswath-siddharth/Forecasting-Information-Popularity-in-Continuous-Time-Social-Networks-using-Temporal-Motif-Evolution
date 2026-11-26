@@ -1,0 +1,19 @@
+{
+  "model": "CasSubTS",
+  "dataset": "Reddit",
+  "observation_time": 3600,
+  "seed": 42,
+  "best_epoch": 1,
+  "train_time_sec": 1058.2551522254944,
+  "params": 153970,
+  "metrics": {
+    "MSLE_log2": 0.7996632613983924,
+    "RMSLE_log2": 0.8942389285858631,
+    "MSLE_ln": 0.3842006240585161,
+    "R2_log2": 0.04099299667527201,
+    "PCC_log2": 0.33509100470270203,
+    "MAPE": 58.96959248213434,
+    "MAE_count": 42.96917761233722,
+    "MedAE_count": 36.08512478228678
+  }
+}
