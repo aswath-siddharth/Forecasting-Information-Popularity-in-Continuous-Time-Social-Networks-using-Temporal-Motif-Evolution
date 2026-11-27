@@ -1,0 +1,168 @@
+{
+  "3600": {
+    "DeepHawkes (CIKM '17)": {
+      "name": "DeepHawkes (CIKM '17)",
+      "n_runs": 3,
+      "params": null,
+      "avg_train_time_sec": null,
+      "MSLE_log2_mean": 0.7148520118554765,
+      "MSLE_log2_std": 0.009957813673683388,
+      "RMSLE_mean": 0.8454686624675168,
+      "R2_mean": 0.14270404479203266,
+      "MAE_mean": 38.1367460216172,
+      "MedAE_mean": 34.154203741777145,
+      "PCC_mean": 0.42513160701331304
+    },
+    "DeepCas (WWW '17)": {
+      "name": "DeepCas (WWW '17)",
+      "n_runs": 3,
+      "params": 44301350,
+      "avg_train_time_sec": 1141.643181403478,
+      "MSLE_log2_mean": 1.5488751991422554,
+      "MSLE_log2_std": 0.30007889113732256,
+      "RMSLE_mean": 1.2385297655781466,
+      "R2_mean": -0.8575095730368787,
+      "MAE_mean": 57.127476904590544,
+      "MedAE_mean": 53.7412486243439,
+      "PCC_mean": -0.03277844314440794
+    },
+    "CasCN (CIKM '19)": {
+      "name": "CasCN (CIKM '19)",
+      "n_runs": 3,
+      "params": 35623,
+      "avg_train_time_sec": 1286.716716368993,
+      "MSLE_log2_mean": 0.7484715745538285,
+      "MSLE_log2_std": 0.02443859570803423,
+      "RMSLE_mean": 0.8650267336437029,
+      "R2_mean": 0.10238532087695233,
+      "MAE_mean": 43.26668017572368,
+      "MedAE_mean": 38.37249580294763,
+      "PCC_mean": 0.35491063557210906
+    },
+    "CasFlow (IEEE TKDE '21)": {
+      "name": "CasFlow (IEEE TKDE '21)",
+      "n_runs": 3,
+      "params": 353621,
+      "avg_train_time_sec": 1560.1106271743774,
+      "MSLE_log2_mean": 0.8389184921283913,
+      "MSLE_log2_std": 0.07554911291854462,
+      "RMSLE_mean": 0.9150114517375466,
+      "R2_mean": -0.006084370767324228,
+      "MAE_mean": 43.83925846320366,
+      "MedAE_mean": 38.19290352927854,
+      "PCC_mean": 0.3467473102298067
+    },
+    "CasSubTS (Sci. Rep. '25)": {
+      "name": "CasSubTS (Sci. Rep. '25)",
+      "n_runs": 3,
+      "params": 153970,
+      "avg_train_time_sec": 1136.3572225570679,
+      "MSLE_log2_mean": 0.7711170556448527,
+      "MSLE_log2_std": 0.02336968568463624,
+      "RMSLE_mean": 0.8780318339948732,
+      "R2_mean": 0.0752274207853905,
+      "MAE_mean": 43.02181411097829,
+      "MedAE_mean": 36.98019417699757,
+      "PCC_mean": 0.3589009526328588
+    },
+    "CasMotif (Ours)": {
+      "name": "CasMotif (Ours)",
+      "n_runs": 3,
+      "params": 49824,
+      "avg_train_time_sec": null,
+      "MSLE_log2_mean": 0.6223636173010848,
+      "MSLE_log2_std": 0.006228414011177977,
+      "RMSLE_mean": 0.7888904095742212,
+      "R2_mean": 0.2536219976362027,
+      "MAE_mean": 36.76552685366704,
+      "MedAE_mean": 32.72158379559591,
+      "PCC_mean": 0.5096410175763747
+    }
+  },
+  "7200": {
+    "DeepHawkes (CIKM '17)": {
+      "name": "DeepHawkes (CIKM '17)",
+      "n_runs": 3,
+      "params": null,
+      "avg_train_time_sec": null,
+      "MSLE_log2_mean": 0.8629776878727702,
+      "MSLE_log2_std": 0.023564064449603336,
+      "RMSLE_mean": 0.9288785155320126,
+      "R2_mean": 0.24459518307934602,
+      "MAE_mean": 32.47546440033333,
+      "MedAE_mean": 27.465349721558727,
+      "PCC_mean": 0.5399713625883878
+    },
+    "DeepCas (WWW '17)": {
+      "name": "DeepCas (WWW '17)",
+      "n_runs": 3,
+      "params": 92213800,
+      "avg_train_time_sec": 2408.718364636103,
+      "MSLE_log2_mean": 2.22865644307699,
+      "MSLE_log2_std": 0.3203756576173551,
+      "RMSLE_mean": 1.488925391227066,
+      "R2_mean": -0.9508474485038704,
+      "MAE_mean": 51.705019376048845,
+      "MedAE_mean": 48.111705320222484,
+      "PCC_mean": -0.06771877147259552
+    },
+    "CasFlow (IEEE TKDE '21)": {
+      "name": "CasFlow (IEEE TKDE '21)",
+      "n_runs": 3,
+      "params": 353621,
+      "avg_train_time_sec": 3539.875560760498,
+      "MSLE_log2_mean": 1.0491834571683405,
+      "MSLE_log2_std": 0.02820747734934884,
+      "RMSLE_mean": 1.0242032841022308,
+      "R2_mean": 0.08160054153370518,
+      "MAE_mean": 35.299899205074716,
+      "MedAE_mean": 24.699677665517047,
+      "PCC_mean": 0.48694489068719315
+    },
+    "CasSubTS (Sci. Rep. '25)": {
+      "name": "CasSubTS (Sci. Rep. '25)",
+      "n_runs": 3,
+      "params": 153970,
+      "avg_train_time_sec": 3206.569497426351,
+      "MSLE_log2_mean": 0.8695760214322146,
+      "MSLE_log2_std": 0.026533895455221616,
+      "RMSLE_mean": 0.9324010886381502,
+      "R2_mean": 0.23881934877811975,
+      "MAE_mean": 33.53015017966092,
+      "MedAE_mean": 26.354753336776696,
+      "PCC_mean": 0.5095195452903177
+    },
+    "CasMotif (Ours)": {
+      "name": "CasMotif (Ours)",
+      "n_runs": 3,
+      "params": 49824,
+      "avg_train_time_sec": null,
+      "MSLE_log2_mean": 0.7136156499745461,
+      "MSLE_log2_std": 0.0051308809047430634,
+      "RMSLE_mean": 0.8447522938831624,
+      "R2_mean": 0.3753387722500657,
+      "MAE_mean": 30.273301248426364,
+      "MedAE_mean": 24.030826349271564,
+      "PCC_mean": 0.6176467327140419
+    },
+    "CasCN (CIKM '19)": {
+      "MSLE_log2": {
+        "mean": 0.9407685661863816,
+        "std": 0.07941821251865212
+      },
+      "per_seed": {
+        "s42": 0.8940942835566021,
+        "s43": 0.8756353043981243,
+        "s44": 1.052576110604418
+      },
+      "train_time_sec": 14430.4688642025,
+      "train_time_formatted": "4h 00m 30.5s",
+      "per_seed_sec": {
+        "s42": 5080.299653053284,
+        "s43": 6720.672857761383,
+        "s44": 2629.4963533878326
+      }
+    },
+    "mean_baseline": 1.1424434062277942
+  }
+}
